@@ -1,0 +1,67 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id         Int      @id @default(autoincrement())
+  name       String
+  avatar_url String?
+  created_at DateTime @default(now())
+  updated_at DateTime @updatedAt
+
+  identities       UserIdentity[]
+  sentRequests     Friendship[]   @relation("Requester")
+  receivedRequests Friendship[]   @relation("Receiver")
+  notifications    Notification[]
+
+  @@map("users")
+}
+
+model UserIdentity {
+  id               Int      @id @default(autoincrement())
+  user_id          Int
+  provider         String
+  provider_user_id String?
+  email            String?
+  password_hash    String?
+  created_at       DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([provider, provider_user_id])
+  @@map("user_identities")
+}
+
+model Friendship {
+  id           Int      @id @default(autoincrement())
+  requester_id Int
+  receiver_id  Int
+  status       String   @default("pending")
+  created_at   DateTime @default(now())
+  updated_at   DateTime @updatedAt
+
+  requester User @relation("Requester", fields: [requester_id], references: [id], onDelete: Cascade)
+  receiver  User @relation("Receiver", fields: [receiver_id], references: [id], onDelete: Cascade)
+
+  @@unique([requester_id, receiver_id])
+  @@map("friendships")
+}
+
+model Notification {
+  id             Int      @id @default(autoincrement())
+  user_id        Int
+  type           String
+  reference_id   Int?
+  reference_type String?
+  is_read        Boolean  @default(false)
+  created_at     DateTime @default(now())
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("notifications")
+}
