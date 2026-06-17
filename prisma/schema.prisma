@@ -14,10 +14,11 @@ model User {
   created_at DateTime @default(now())
   updated_at DateTime @updatedAt
 
-  identities       UserIdentity[]
-  sentRequests     Friendship[]   @relation("Requester")
-  receivedRequests Friendship[]   @relation("Receiver")
-  notifications    Notification[]
+  identities               UserIdentity[]
+  sentRequests             Friendship[]             @relation("Requester")
+  receivedRequests         Friendship[]             @relation("Receiver")
+  notifications            Notification[]
+  notificationPreferences  NotificationPreference[]
 
   @@map("users")
 }
@@ -65,4 +66,19 @@ model Notification {
   user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@map("notifications")
+}
+
+model NotificationPreference {
+  id         String   @id @default(uuid())
+  user_id    String
+  type       String
+  in_app     Boolean  @default(true)
+  line       Boolean  @default(true)
+  email      Boolean  @default(true)
+  updated_at DateTime @updatedAt
+
+  user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([user_id, type])
+  @@map("notification_preferences")
 }
