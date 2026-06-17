@@ -92,10 +92,33 @@ model Activity {
   created_at       DateTime       @default(now())
   updated_at       DateTime       @updatedAt
 
-  creator          User             @relation(fields: [creator_id], references: [id], onDelete: Cascade)
+  creator          User              @relation(fields: [creator_id], references: [id], onDelete: Cascade)
   notificationJobs NotificationJob[]
+  schedule         ActivitySchedule?
 
   @@map("activities")
+}
+
+enum ActivityScheduleType {
+  slot
+  range
+}
+
+model ActivitySchedule {
+  id                String               @id @default(uuid())
+  activity_id       String               @unique
+  schedule_type     ActivityScheduleType
+  window_start      DateTime             @db.Date
+  window_end        DateTime             @db.Date
+  slot_duration_min Int?                 @default(60)
+  deadline_at       DateTime
+  vote_deadline_at  DateTime?
+  confirmed_start   DateTime?
+  confirmed_end     DateTime?
+
+  activity Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+
+  @@map("activity_schedules")
 }
 
 enum NotificationJobStatus {
