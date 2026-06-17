@@ -25,6 +25,7 @@ model User {
   sentInvitations          ActivityInvitation[]   @relation("InvitationSent")
   receivedInvitations      ActivityInvitation[]   @relation("InvitationReceived")
   activityParticipants     ActivityParticipant[]
+  activityVotes            ActivityVote[]
 
   @@map("users")
 }
@@ -102,8 +103,24 @@ model Activity {
   availabilities         ActivityAvailability[]
   invitations            ActivityInvitation[]
   participants           ActivityParticipant[]
+  votes                  ActivityVote[]
 
   @@map("activities")
+}
+
+model ActivityVote {
+  id          String   @id @default(uuid())
+  activity_id String
+  user_id     String
+  slot_start  DateTime
+  slot_end    DateTime
+  created_at  DateTime @default(now())
+
+  activity Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([activity_id, user_id])
+  @@map("activity_votes")
 }
 
 enum ActivityParticipantStatus {
