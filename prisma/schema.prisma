@@ -24,6 +24,7 @@ model User {
   activityAvailabilities   ActivityAvailability[]
   sentInvitations          ActivityInvitation[]   @relation("InvitationSent")
   receivedInvitations      ActivityInvitation[]   @relation("InvitationReceived")
+  activityParticipants     ActivityParticipant[]
 
   @@map("users")
 }
@@ -100,8 +101,29 @@ model Activity {
   schedule               ActivitySchedule?
   availabilities         ActivityAvailability[]
   invitations            ActivityInvitation[]
+  participants           ActivityParticipant[]
 
   @@map("activities")
+}
+
+enum ActivityParticipantStatus {
+  joined
+  left
+  removed
+}
+
+model ActivityParticipant {
+  id          String                    @id @default(uuid())
+  activity_id String
+  user_id     String
+  status      ActivityParticipantStatus @default(joined)
+  joined_at   DateTime                  @default(now())
+
+  activity Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([activity_id, user_id])
+  @@map("activity_participants")
 }
 
 enum ActivityInvitationStatus {
