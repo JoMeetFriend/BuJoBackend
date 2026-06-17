@@ -104,8 +104,20 @@ model Activity {
   invitations            ActivityInvitation[]
   participants           ActivityParticipant[]
   votes                  ActivityVote[]
+  chat                   ActivityChat?
 
   @@map("activities")
+}
+
+model ActivityChat {
+  id          String   @id @default(uuid())
+  activity_id String   @unique
+  name        String
+  created_at  DateTime @default(now())
+
+  activity Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+
+  @@map("activity_chats")
 }
 
 model ActivityVote {
