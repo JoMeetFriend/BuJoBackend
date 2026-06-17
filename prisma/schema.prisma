@@ -22,6 +22,8 @@ model User {
   notificationJobs         NotificationJob[]
   activities               Activity[]
   activityAvailabilities   ActivityAvailability[]
+  sentInvitations          ActivityInvitation[]   @relation("InvitationSent")
+  receivedInvitations      ActivityInvitation[]   @relation("InvitationReceived")
 
   @@map("users")
 }
@@ -97,8 +99,31 @@ model Activity {
   notificationJobs       NotificationJob[]
   schedule               ActivitySchedule?
   availabilities         ActivityAvailability[]
+  invitations            ActivityInvitation[]
 
   @@map("activities")
+}
+
+enum ActivityInvitationStatus {
+  pending
+  accepted
+  declined
+}
+
+model ActivityInvitation {
+  id           String                   @id @default(uuid())
+  activity_id  String
+  inviter_id   String
+  invitee_id   String
+  invite_token String?                  @unique
+  status       ActivityInvitationStatus @default(pending)
+  created_at   DateTime                 @default(now())
+
+  activity Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+  inviter  User     @relation("InvitationSent", fields: [inviter_id], references: [id], onDelete: Cascade)
+  invitee  User     @relation("InvitationReceived", fields: [invitee_id], references: [id], onDelete: Cascade)
+
+  @@map("activity_invitations")
 }
 
 model ActivityAvailability {
