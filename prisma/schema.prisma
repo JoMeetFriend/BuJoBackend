@@ -21,6 +21,7 @@ model User {
   notificationPreferences  NotificationPreference[]
   notificationJobs         NotificationJob[]
   activities               Activity[]
+  activityAvailabilities   ActivityAvailability[]
 
   @@map("users")
 }
@@ -92,11 +93,27 @@ model Activity {
   created_at       DateTime       @default(now())
   updated_at       DateTime       @updatedAt
 
-  creator          User              @relation(fields: [creator_id], references: [id], onDelete: Cascade)
-  notificationJobs NotificationJob[]
-  schedule         ActivitySchedule?
+  creator                User                   @relation(fields: [creator_id], references: [id], onDelete: Cascade)
+  notificationJobs       NotificationJob[]
+  schedule               ActivitySchedule?
+  availabilities         ActivityAvailability[]
 
   @@map("activities")
+}
+
+model ActivityAvailability {
+  id          String   @id @default(uuid())
+  activity_id String
+  user_id     String
+  slot_start  DateTime
+  slot_end    DateTime
+  created_at  DateTime @default(now())
+
+  activity Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([activity_id, user_id, slot_start])
+  @@map("activity_availabilities")
 }
 
 enum ActivityScheduleType {
