@@ -8,7 +8,7 @@ datasource db {
 }
 
 model User {
-  id         Int      @id @default(autoincrement())
+  id         String   @id @default(uuid())
   name       String
   avatar_url String?
   created_at DateTime @default(now())
@@ -23,8 +23,8 @@ model User {
 }
 
 model UserIdentity {
-  id               Int      @id @default(autoincrement())
-  user_id          Int
+  id               String   @id @default(uuid())
+  user_id          String
   provider         String
   provider_user_id String?
   email            String?
@@ -33,14 +33,15 @@ model UserIdentity {
 
   user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
+  @@unique([user_id, provider])
   @@unique([provider, provider_user_id])
   @@map("user_identities")
 }
 
 model Friendship {
-  id           Int      @id @default(autoincrement())
-  requester_id Int
-  receiver_id  Int
+  id           String   @id @default(uuid())
+  requester_id String
+  receiver_id  String
   status       String   @default("pending")
   created_at   DateTime @default(now())
   updated_at   DateTime @updatedAt
@@ -53,10 +54,10 @@ model Friendship {
 }
 
 model Notification {
-  id             Int      @id @default(autoincrement())
-  user_id        Int
+  id             String   @id @default(uuid())
+  user_id        String
   type           String
-  reference_id   Int?
+  reference_id   String?
   reference_type String?
   is_read        Boolean  @default(false)
   created_at     DateTime @default(now())
