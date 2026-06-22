@@ -16,4 +16,6 @@ app.get('/', (req, res) => {
   res.json({ message: 'Bujo backend is running' });
 });
 
+app.use('/api/auth', require('./routes/auth'));
+
 module.exports = app;
