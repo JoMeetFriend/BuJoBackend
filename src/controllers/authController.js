@@ -83,4 +83,13 @@ async function login(req, res) {
   return res.status(200).json({ user: { id: identity.user.id, display_name: identity.user.display_name } });
 }
 
-module.exports = { signup, login };
+async function me(req, res) {
+  const user = await prisma.user.findUnique({
+    where: { id: req.user.userId },
+    select: { id: true, display_name: true, avatar_url: true, created_at: true },
+  });
+  if (!user) return res.status(404).json({ message: '用戶不存在' });
+  return res.json({ user });
+}
+
+module.exports = { signup, login, me };
