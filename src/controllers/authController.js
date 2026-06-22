@@ -83,6 +83,15 @@ async function login(req, res) {
   return res.status(200).json({ user: { id: identity.user.id, display_name: identity.user.display_name } });
 }
 
+function logout(req, res) {
+  res.clearCookie('token', {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === 'production',
+    sameSite: 'strict',
+  });
+  return res.status(200).json({ message: '已登出' });
+}
+
 async function me(req, res) {
   const user = await prisma.user.findUnique({
     where: { id: req.user.userId },
@@ -92,4 +101,4 @@ async function me(req, res) {
   return res.json({ user });
 }
 
-module.exports = { signup, login, me };
+module.exports = { signup, login, logout, me };

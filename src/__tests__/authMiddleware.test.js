@@ -115,3 +115,16 @@ describe('POST /api/auth/login', () => {
     expect(res.status).toBe(401);
   });
 });
+
+// ─── Logout ───────────────────────────────────────────────────────────────────
+
+describe('POST /api/auth/logout', () => {
+  it('登出成功 — 回傳 200 並清除 cookie', async () => {
+    const res = await request(app).post('/api/auth/logout');
+
+    expect(res.status).toBe(200);
+
+    const cookie = res.headers['set-cookie'][0];
+    expect(cookie).toMatch(/token=;/);
+  });
+});
