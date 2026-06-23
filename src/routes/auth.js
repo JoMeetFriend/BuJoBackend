@@ -3,7 +3,11 @@ import jwt from "jsonwebtoken";
 import prisma from "../lib/prisma.js";
 import { signup, login, logout, me } from "../controllers/authController.js";
 import authenticate from "../middleware/authenticate.js";
-import { createLineAuthorizationUrl } from "../services/lineService.js";
+import {
+  createLineAuthorizationUrl,
+  exchangeLineCodeForToken,
+  verifyLineIdToken,
+} from "../services/lineService.js";
 
 const router = express.Router();
 
@@ -11,9 +15,33 @@ router.post("/signup", signup);
 router.post("/login", login);
 router.post("/logout", logout);
 router.get("/me", authenticate, me);
+
 router.get("/line", (req, res) => {
   const url = createLineAuthorizationUrl();
+
   res.redirect(url.toString());
+});
+
+router.get("/line/callback", async (req, res) => {
+  const { code, state } = req.query;
+
+  if (!code) {
+    return res.status(400).json({ error: "缺少 LINE authorization code" });
+  }
+
+  try {
+    const tokenData = await exchangeLineCodeForToken(code);
+    const lineProfile = await verifyLineIdToken(tokenData.id_token);
+
+    res.json({
+      message: "LINE ID token verify success",
+      state,
+      lineProfile,
+    });
+  } catch (error) {
+    console.error("LINE callback error:", error);
+    res.status(500).json({ error: "LINE 登入失敗" });
+  }
 });
 
 router.post("/google", async (req, res) => {

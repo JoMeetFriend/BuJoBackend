@@ -23,3 +23,58 @@ export function createLineAuthorizationUrl() {
 
   return url;
 }
+
+export async function exchangeLineCodeForToken(code) {
+  const { channelId, channelSecret, callbackUrl } = getLineConfig();
+
+  const body = new URLSearchParams({
+    grant_type: "authorization_code",
+    code,
+    redirect_uri: callbackUrl,
+    client_id: channelId,
+    client_secret: channelSecret,
+  });
+
+  const response = await fetch("https://api.line.me/oauth2/v2.1/token", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body,
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    console.error("LINE token exchange failed:", data);
+    throw new Error("LINE token exchange failed");
+  }
+
+  return data;
+}
+
+export async function verifyLineIdToken(idToken) {
+  const { channelId } = getLineConfig();
+
+  const body = new URLSearchParams({
+    id_token: idToken,
+    client_id: channelId,
+  });
+
+  const response = await fetch("https://api.line.me/oauth2/v2.1/verify", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/x-www-form-urlencoded",
+    },
+    body,
+  });
+
+  const data = await response.json();
+
+  if (!response.ok) {
+    console.error("LINE ID token verify failed:", data);
+    throw new Error("LINE ID token verify failed");
+  }
+
+  return data;
+}
