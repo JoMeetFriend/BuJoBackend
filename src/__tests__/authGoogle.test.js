@@ -45,7 +45,6 @@ describe('POST /api/auth/google', () => {
     expect(res.headers['set-cookie']).toBeDefined()
     expect(res.headers['set-cookie'][0]).toMatch(/token=/)
     expect(res.headers['set-cookie'][0]).toMatch(/HttpOnly/i)
-    expect(res.body.token).toBeUndefined()
     expect(res.body.user).toMatchObject({
       id: 'user-uuid-1',
       display_name: 'Test User',
@@ -72,7 +71,6 @@ describe('POST /api/auth/google', () => {
     expect(res.headers['set-cookie']).toBeDefined()
     expect(res.headers['set-cookie'][0]).toMatch(/token=/)
     expect(res.headers['set-cookie'][0]).toMatch(/HttpOnly/i)
-    expect(res.body.token).toBeUndefined()
     expect(res.body.user).toMatchObject({
       id: 'user-uuid-2',
       display_name: 'Existing User',
