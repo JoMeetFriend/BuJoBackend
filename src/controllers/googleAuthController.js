@@ -46,15 +46,21 @@ export async function googleLogin(req, res) {
       user = identity.user
     }
 
-    // 步驟三：發我們自己的 JWT
+    // 步驟三：發我們自己的 JWT，存進 httpOnly cookie
     const ourToken = jwt.sign(
       { userId: user.id },
       process.env.JWT_SECRET,
       { expiresIn: '7d' }
     )
 
+    res.cookie('token', ourToken, {
+      httpOnly: true,
+      secure: process.env.NODE_ENV === 'production',
+      sameSite: 'strict',
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+    })
+
     res.json({
-      token: ourToken,
       user: {
         id: user.id,
         display_name: user.display_name,

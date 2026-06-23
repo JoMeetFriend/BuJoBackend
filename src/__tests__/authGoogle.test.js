@@ -28,7 +28,7 @@ function mockGoogleSuccess(overrides = {}) {
 }
 
 describe('POST /api/auth/google', () => {
-  test('新用戶第一次登入 → 建立帳號，回傳 200 + JWT + user 資料', async () => {
+  test('新用戶第一次登入 → 建立帳號，回傳 200 + httpOnly cookie + user 資料', async () => {
     mockGoogleSuccess()
     prisma.userIdentity.findUnique.mockResolvedValueOnce(null)
     prisma.user.create.mockResolvedValueOnce({
@@ -42,7 +42,10 @@ describe('POST /api/auth/google', () => {
       .send({ token: 'valid-google-access-token' })
 
     expect(res.status).toBe(200)
-    expect(res.body.token).toBeDefined()
+    expect(res.headers['set-cookie']).toBeDefined()
+    expect(res.headers['set-cookie'][0]).toMatch(/token=/)
+    expect(res.headers['set-cookie'][0]).toMatch(/HttpOnly/i)
+    expect(res.body.token).toBeUndefined()
     expect(res.body.user).toMatchObject({
       id: 'user-uuid-1',
       display_name: 'Test User',
@@ -51,7 +54,7 @@ describe('POST /api/auth/google', () => {
     expect(prisma.user.create).toHaveBeenCalledTimes(1)
   })
 
-  test('舊用戶再次登入 → 找到現有帳號，回傳 200 + JWT，不重複建帳號', async () => {
+  test('舊用戶再次登入 → 找到現有帳號，回傳 200 + httpOnly cookie，不重複建帳號', async () => {
     mockGoogleSuccess()
     prisma.userIdentity.findUnique.mockResolvedValueOnce({
       user: {
@@ -66,7 +69,10 @@ describe('POST /api/auth/google', () => {
       .send({ token: 'valid-google-access-token' })
 
     expect(res.status).toBe(200)
-    expect(res.body.token).toBeDefined()
+    expect(res.headers['set-cookie']).toBeDefined()
+    expect(res.headers['set-cookie'][0]).toMatch(/token=/)
+    expect(res.headers['set-cookie'][0]).toMatch(/HttpOnly/i)
+    expect(res.body.token).toBeUndefined()
     expect(res.body.user).toMatchObject({
       id: 'user-uuid-2',
       display_name: 'Existing User',
