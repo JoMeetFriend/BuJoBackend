@@ -7,6 +7,6 @@ const prisma = {
     findFirst: jest.fn(),
     create: jest.fn(),
   },
-};
+}
 
-module.exports = prisma;
+export default prisma

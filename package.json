@@ -3,13 +3,13 @@
   "version": "1.0.0",
   "description": "Backend API for Bullet Journal app",
   "main": "src/app.js",
-  "type": "commonjs",
+  "type": "module",
   "scripts": {
     "start": "node src/server.js",
     "dev": "nodemon src/server.js",
-    "test": "jest",
-    "test:watch": "jest --watch",
-    "test:coverage": "jest --coverage",
+    "test": "NODE_OPTIONS=--experimental-vm-modules jest",
+    "test:watch": "NODE_OPTIONS=--experimental-vm-modules jest --watch",
+    "test:coverage": "NODE_OPTIONS=--experimental-vm-modules jest --coverage",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev"
   },
