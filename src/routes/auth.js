@@ -13,6 +13,12 @@ import {
 } from "../services/lineService.js";
 
 const router = express.Router();
+const AUTH_COOKIE_OPTIONS = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === "production",
+  sameSite: "strict",
+  maxAge: 7 * 24 * 60 * 60 * 1000,
+};
 
 router.post("/signup", signup);
 router.post("/login", login);
@@ -38,12 +44,19 @@ router.get("/line/callback", async (req, res) => {
     const tokenData = await exchangeLineCodeForToken(code);
     const lineProfile = await verifyLineIdToken(tokenData.id_token);
     const user = await findOrCreateLineUser(lineProfile);
+    const token = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, {
+      expiresIn: "7d",
+    });
+
+    res.cookie("token", token, AUTH_COOKIE_OPTIONS);
 
     res.json({
-      message: "LINE login user ready",
-      state,
-      lineProfile,
-      user,
+      message: "LINE login success",
+      user: {
+        id: user.id,
+        display_name: user.display_name,
+        avatar_url: user.avatar_url,
+      },
     });
   } catch (error) {
     console.error("LINE callback error:", error);
