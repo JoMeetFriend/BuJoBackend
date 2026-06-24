@@ -3,10 +3,13 @@ import jwt from "jsonwebtoken";
 import prisma from "../lib/prisma.js";
 import { signup, login, logout, me } from "../controllers/authController.js";
 import authenticate from "../middleware/authenticate.js";
+
 import {
   createLineAuthorizationUrl,
   exchangeLineCodeForToken,
+  findOrCreateLineUser,
   verifyLineIdToken,
+  verifyLineState,
 } from "../services/lineService.js";
 
 const router = express.Router();
@@ -30,13 +33,17 @@ router.get("/line/callback", async (req, res) => {
   }
 
   try {
+    await verifyLineState(state);
+
     const tokenData = await exchangeLineCodeForToken(code);
     const lineProfile = await verifyLineIdToken(tokenData.id_token);
+    const user = await findOrCreateLineUser(lineProfile);
 
     res.json({
-      message: "LINE ID token verify success",
+      message: "LINE login user ready",
       state,
       lineProfile,
+      user,
     });
   } catch (error) {
     console.error("LINE callback error:", error);

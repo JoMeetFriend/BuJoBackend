@@ -98,3 +98,72 @@ export async function verifyLineIdToken(idToken) {
 
   return data;
 }
+
+export async function verifyLineState(state) {
+  if (!state || typeof state !== "string") {
+    throw new Error("OAuth state 無效");
+  }
+
+  const attempt = await prisma.oAuthAttempt.findUnique({
+    where: {
+      state_hash: sha256(state),
+    },
+  });
+
+  if (!attempt) {
+    throw new Error("OAuth state 不存在");
+  }
+
+  if (attempt.consumed_at) {
+    throw new Error("OAuth state 已使用");
+  }
+
+  if (attempt.expires_at <= new Date()) {
+    throw new Error("OAuth state 已過期");
+  }
+
+  await prisma.oAuthAttempt.update({
+    where: {
+      id: attempt.id,
+    },
+    data: {
+      consumed_at: new Date(),
+    },
+  });
+
+  return attempt;
+}
+
+export async function findOrCreateLineUser(lineProfile) {
+  const identity = await prisma.userIdentity.findUnique({
+    where: {
+      provider_provider_user_id: {
+        provider: "line",
+        provider_user_id: lineProfile.sub,
+      },
+    },
+    include: {
+      user: true,
+    },
+  });
+
+  if (identity) {
+    return identity.user;
+  }
+
+  const user = await prisma.user.create({
+    data: {
+      display_name: lineProfile.name || "LINE 使用者",
+      avatar_url: lineProfile.picture || null,
+      identities: {
+        create: {
+          provider: "line",
+          provider_user_id: lineProfile.sub,
+          email: null,
+        },
+      },
+    },
+  });
+
+  return user;
+}
