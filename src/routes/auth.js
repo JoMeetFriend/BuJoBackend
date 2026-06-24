@@ -16,8 +16,8 @@ router.post("/login", login);
 router.post("/logout", logout);
 router.get("/me", authenticate, me);
 
-router.get("/line", (req, res) => {
-  const url = createLineAuthorizationUrl();
+router.get("/line", async (req, res) => {
+  const url = await createLineAuthorizationUrl();
 
   res.redirect(url.toString());
 });

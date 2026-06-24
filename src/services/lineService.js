@@ -1,3 +1,14 @@
+import crypto from "crypto";
+import prisma from "../lib/prisma.js";
+
+function randomToken() {
+  return crypto.randomBytes(32).toString("base64url");
+}
+
+function sha256(value) {
+  return crypto.createHash("sha256").update(value).digest("hex");
+}
+
 export function getLineConfig() {
   const channelId = process.env.LINE_CHANNEL_ID;
   const channelSecret = process.env.LINE_CHANNEL_SECRET;
@@ -10,8 +21,17 @@ export function getLineConfig() {
   return { channelId, channelSecret, callbackUrl };
 }
 
-export function createLineAuthorizationUrl() {
+export async function createLineAuthorizationUrl() {
   const { channelId, callbackUrl } = getLineConfig();
+  const state = randomToken();
+  const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+
+  await prisma.oAuthAttempt.create({
+    data: {
+      state_hash: sha256(state),
+      expires_at: expiresAt,
+    },
+  });
 
   const url = new URL("https://access.line.me/oauth2/v2.1/authorize");
 
@@ -19,7 +39,7 @@ export function createLineAuthorizationUrl() {
   url.searchParams.set("client_id", channelId);
   url.searchParams.set("redirect_uri", callbackUrl);
   url.searchParams.set("scope", "profile openid");
-  url.searchParams.set("state", "暫時先放測試用-state");
+  url.searchParams.set("state", state);
 
   return url;
 }
