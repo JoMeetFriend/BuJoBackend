@@ -3,7 +3,7 @@ import { jest } from '@jest/globals'
 jest.unstable_mockModule('../lib/prisma.js', () => ({
   default: {
     user: { create: jest.fn(), findUnique: jest.fn() },
-    userIdentity: { findFirst: jest.fn(), create: jest.fn() },
+    userIdentity: { findFirst: jest.fn(), findUnique: jest.fn(), create: jest.fn() },
   }
 }))
 
