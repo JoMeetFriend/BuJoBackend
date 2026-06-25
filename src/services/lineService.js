@@ -104,66 +104,72 @@ export async function verifyLineState(state) {
     throw new Error("OAuth state 無效");
   }
 
-  const attempt = await prisma.oAuthAttempt.findUnique({
+  const consumedAt = new Date();
+  const updated = await prisma.oAuthAttempt.updateMany({
     where: {
       state_hash: sha256(state),
-    },
-  });
-
-  if (!attempt) {
-    throw new Error("OAuth state 不存在");
-  }
-
-  if (attempt.consumed_at) {
-    throw new Error("OAuth state 已使用");
-  }
-
-  if (attempt.expires_at <= new Date()) {
-    throw new Error("OAuth state 已過期");
-  }
-
-  await prisma.oAuthAttempt.update({
-    where: {
-      id: attempt.id,
+      consumed_at: null,
+      expires_at: { gt: consumedAt },
     },
     data: {
-      consumed_at: new Date(),
+      consumed_at: consumedAt,
     },
   });
 
-  return attempt;
+  if (updated.count === 0) {
+    throw new Error("OAuth state 不存在、已使用或已過期");
+  }
+
+  return updated;
 }
 
-export async function findOrCreateLineUser(lineProfile) {
-  const identity = await prisma.userIdentity.findUnique({
+async function findLineIdentity(lineUserId) {
+  return prisma.userIdentity.findUnique({
     where: {
       provider_provider_user_id: {
         provider: "line",
-        provider_user_id: lineProfile.sub,
+        provider_user_id: lineUserId,
       },
     },
     include: {
       user: true,
     },
   });
+}
+
+export async function findOrCreateLineUser(lineProfile) {
+  const identity = await findLineIdentity(lineProfile.sub);
 
   if (identity) {
     return identity.user;
   }
 
-  const user = await prisma.user.create({
-    data: {
-      display_name: lineProfile.name || "LINE 使用者",
-      avatar_url: lineProfile.picture || null,
-      identities: {
-        create: {
-          provider: "line",
-          provider_user_id: lineProfile.sub,
-          email: null,
+  try {
+    const user = await prisma.user.create({
+      data: {
+        display_name: lineProfile.name || "LINE 使用者",
+        avatar_url: lineProfile.picture || null,
+        identities: {
+          create: {
+            provider: "line",
+            provider_user_id: lineProfile.sub,
+            email: null,
+          },
         },
       },
-    },
-  });
+    });
 
-  return user;
+    return user;
+  } catch (error) {
+    if (error.code !== "P2002") {
+      throw error;
+    }
+
+    const existingIdentity = await findLineIdentity(lineProfile.sub);
+    if (!existingIdentity) {
+      throw error;
+    }
+
+    return existingIdentity.user;
+  }
 }
