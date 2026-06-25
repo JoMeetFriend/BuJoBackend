@@ -50,14 +50,7 @@ router.get("/line/callback", async (req, res) => {
 
     res.cookie("token", token, AUTH_COOKIE_OPTIONS);
 
-    res.json({
-      message: "LINE login success",
-      user: {
-        id: user.id,
-        display_name: user.display_name,
-        avatar_url: user.avatar_url,
-      },
-    });
+    res.redirect(process.env.FRONTEND_URL || "http://localhost:5173");
   } catch (error) {
     console.error("LINE callback error:", error);
     res.status(500).json({ error: "LINE 登入失敗" });
