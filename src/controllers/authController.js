@@ -1,14 +1,11 @@
 import bcrypt from 'bcryptjs'
-import jwt from 'jsonwebtoken'
 import prisma from '../lib/prisma.js'
 import { AUTH_COOKIE_OPTIONS } from '../lib/cookieOptions.js'
+import { signToken } from '../lib/jwt.js'
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const COOKIE_NAME = 'token'
 
-function signToken(userId) {
-  return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '7d' })
-}
 
 export async function signup(req, res) {
   const { email, password, display_name } = req.body
