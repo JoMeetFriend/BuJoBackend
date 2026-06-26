@@ -1,15 +1,10 @@
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import prisma from '../lib/prisma.js'
+import { AUTH_COOKIE_OPTIONS } from '../lib/cookieOptions.js'
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 const COOKIE_NAME = 'token'
-const COOKIE_OPTIONS = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
-  maxAge: 7 * 24 * 60 * 60 * 1000,
-}
 
 function signToken(userId) {
   return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '7d' })
@@ -52,7 +47,7 @@ export async function signup(req, res) {
   })
 
   const token = signToken(user.id)
-  res.cookie(COOKIE_NAME, token, COOKIE_OPTIONS)
+  res.cookie(COOKIE_NAME, token, AUTH_COOKIE_OPTIONS)
 
   return res.status(201).json({ user: { id: user.id, display_name: user.display_name, created_at: user.created_at } })
 }
@@ -78,17 +73,13 @@ export async function login(req, res) {
   }
 
   const token = signToken(identity.user.id)
-  res.cookie(COOKIE_NAME, token, COOKIE_OPTIONS)
+  res.cookie(COOKIE_NAME, token, AUTH_COOKIE_OPTIONS)
 
   return res.status(200).json({ user: { id: identity.user.id, display_name: identity.user.display_name } })
 }
 
 export function logout(req, res) {
-  res.clearCookie('token', {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === 'production',
-    sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
-  })
+  res.clearCookie('token', AUTH_COOKIE_OPTIONS)
   return res.status(200).json({ message: '已登出' })
 }
 

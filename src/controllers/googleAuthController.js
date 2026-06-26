@@ -1,5 +1,6 @@
 import jwt from 'jsonwebtoken'
 import { OAuth2Client } from 'google-auth-library'
+import { AUTH_COOKIE_OPTIONS } from '../lib/cookieOptions.js'
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID)
 
@@ -57,12 +58,7 @@ export async function googleLogin(req, res) {
     // 步驟三：發我們自己的 JWT，存進 httpOnly cookie
     const ourToken = jwt.sign({ userId: user.id }, process.env.JWT_SECRET, { expiresIn: '7d' })
 
-    res.cookie('token', ourToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    })
+    res.cookie('token', ourToken, AUTH_COOKIE_OPTIONS)
 
     res.json({
       user: {

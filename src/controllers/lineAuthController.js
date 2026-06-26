@@ -6,13 +6,7 @@ import {
   verifyLineIdToken,
   verifyLineState,
 } from '../services/lineService.js'
-
-const AUTH_COOKIE_OPTIONS = {
-  httpOnly: true,
-  secure: process.env.NODE_ENV === 'production',
-  sameSite: process.env.NODE_ENV === 'production' ? 'none' : 'strict',
-  maxAge: 7 * 24 * 60 * 60 * 1000,
-}
+import { AUTH_COOKIE_OPTIONS } from '../lib/cookieOptions.js'
 
 export async function lineLogin(req, res) {
   const url = await createLineAuthorizationUrl()
