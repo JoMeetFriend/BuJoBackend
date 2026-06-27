@@ -252,3 +252,14 @@ model NotificationPreference {
   @@unique([user_id, type])
   @@map("notification_preferences")
 }
+
+model OAuthAttempt {
+  id          String    @id @default(uuid())
+  state_hash  String    @unique
+  expires_at  DateTime
+  consumed_at DateTime?
+  created_at  DateTime  @default(now())
+
+  @@index([expires_at])
+  @@map("oauth_attempts")
+}
