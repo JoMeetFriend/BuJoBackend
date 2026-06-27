@@ -51,14 +51,37 @@ export async function createActivity(req, res) {
 export async function listActivities(req, res) {
   const userId = req.user.userId
 
+  // 撈好友 ID（雙向關係）
+  const friendships = await prisma.friendship.findMany({
+    where: {
+      status: 'accepted',
+      OR: [{ requester_id: userId }, { receiver_id: userId }],
+    },
+    select: { requester_id: true, receiver_id: true },
+  })
+  const friendIds = friendships.map((f) =>
+    f.requester_id === userId ? f.receiver_id : f.requester_id,
+  )
+
   const activities = await prisma.activity.findMany({
     where: {
-      participants: {
-        some: {
-          user_id: userId,
-          status: 'joined',
+      OR: [
+        // 我已報名的活動（非已取消）
+        {
+          status: { not: 'cancelled' },
+          participants: { some: { user_id: userId, status: 'joined' } },
         },
-      },
+        // 好友建立、揪團中、我還沒加入
+        ...(friendIds.length > 0
+          ? [
+              {
+                status: 'recruiting',
+                creator_id: { in: friendIds },
+                NOT: { participants: { some: { user_id: userId, status: 'joined' } } },
+              },
+            ]
+          : []),
+      ],
     },
     include: {
       schedule: true,
@@ -301,6 +324,7 @@ function formatCard(act, userId) {
     location: act.location || '',
     status: act.status,
     is_creator: act.creator_id === userId,
+    has_joined: act.participants.some((p) => p.user_id === userId),
     date,
     time,
     participants: act.participants.slice(0, 5).map((p) => ({
