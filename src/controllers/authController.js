@@ -1,6 +1,6 @@
 import bcrypt from 'bcryptjs'
 import prisma from '../lib/prisma.js'
-import { AUTH_COOKIE_OPTIONS } from '../lib/cookieOptions.js'
+import { AUTH_COOKIE_OPTIONS, CLEAR_COOKIE_OPTIONS } from '../lib/cookieOptions.js'
 import { signToken } from '../lib/jwt.js'
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
@@ -86,7 +86,7 @@ export async function login(req, res) {
 }
 
 export function logout(req, res) {
-  res.clearCookie('token', AUTH_COOKIE_OPTIONS)
+  res.clearCookie('token', CLEAR_COOKIE_OPTIONS)
   return res.status(200).json({ message: '已登出' })
 }
 
