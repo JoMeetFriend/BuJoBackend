@@ -14,6 +14,7 @@ const {
 const { default: prisma } = await import('../lib/prisma.js')
 
 describe('notificationService', () => {
+  // 測試 createNotification 會用正確欄位建立一筆未讀通知。
   it('createNotification 會建立未讀通知', async () => {
     const notification = {
       id: 'notification-1',
@@ -44,18 +45,21 @@ describe('notificationService', () => {
     })
   })
 
+  // 測試 createNotification 缺少 userId 時會丟錯。
   it('createNotification 缺 userId 會丟錯', async () => {
     await expect(createNotification({
       type: 'custom_type',
     })).rejects.toThrow('userId is required')
   })
 
+  // 測試 createNotification 缺少 type 時會丟錯。
   it('createNotification 缺 type 會丟錯', async () => {
     await expect(createNotification({
       userId: 'user-b',
     })).rejects.toThrow('type is required')
   })
 
+  // 測試 A 送好友邀請給 B 時，會建立給 B 的好友邀請通知。
   it('createFriendRequestNotification 會建立好友邀請通知', async () => {
     const notification = {
       id: 'notification-1',
@@ -84,18 +88,21 @@ describe('notificationService', () => {
     })
   })
 
+  // 測試好友邀請通知缺少 receiverId 時會丟錯。
   it('createFriendRequestNotification 缺 receiverId 會丟錯', async () => {
     await expect(createFriendRequestNotification({
       friendshipId: 'friendship-1',
     })).rejects.toThrow('receiverId is required')
   })
 
+  // 測試好友邀請通知缺少 friendshipId 時會丟錯。
   it('createFriendRequestNotification 缺 friendshipId 會丟錯', async () => {
     await expect(createFriendRequestNotification({
       receiverId: 'user-b',
     })).rejects.toThrow('friendshipId is required')
   })
 
+  // 測試 B 接受 A 的好友邀請時，會建立給 A 的接受通知。
   it('createFriendRequestAcceptedNotification 會建立好友邀請接受通知', async () => {
     const notification = {
       id: 'notification-1',
@@ -124,12 +131,14 @@ describe('notificationService', () => {
     })
   })
 
+  // 測試好友邀請接受通知缺少 requesterId 時會丟錯。
   it('createFriendRequestAcceptedNotification 缺 requesterId 會丟錯', async () => {
     await expect(createFriendRequestAcceptedNotification({
       friendshipId: 'friendship-1',
     })).rejects.toThrow('requesterId is required')
   })
 
+  // 測試好友邀請接受通知缺少 friendshipId 時會丟錯。
   it('createFriendRequestAcceptedNotification 缺 friendshipId 會丟錯', async () => {
     await expect(createFriendRequestAcceptedNotification({
       requesterId: 'user-a',
