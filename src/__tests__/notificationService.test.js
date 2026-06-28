@@ -9,6 +9,7 @@ jest.unstable_mockModule('../lib/prisma.js', () => ({
 const {
   createNotification,
   createFriendRequestNotification,
+  createFriendRequestAcceptedNotification,
 } = await import('../services/notificationService.js')
 const { default: prisma } = await import('../lib/prisma.js')
 
@@ -92,6 +93,46 @@ describe('notificationService', () => {
   it('createFriendRequestNotification 缺 friendshipId 會丟錯', async () => {
     await expect(createFriendRequestNotification({
       receiverId: 'user-b',
+    })).rejects.toThrow('friendshipId is required')
+  })
+
+  it('createFriendRequestAcceptedNotification 會建立好友邀請接受通知', async () => {
+    const notification = {
+      id: 'notification-1',
+      user_id: 'user-a',
+      type: 'friend_request_accepted',
+      reference_id: 'friendship-1',
+      reference_type: 'friendship',
+      is_read: false,
+    }
+    prisma.notification.create.mockResolvedValue(notification)
+
+    const result = await createFriendRequestAcceptedNotification({
+      requesterId: 'user-a',
+      friendshipId: 'friendship-1',
+    })
+
+    expect(result).toBe(notification)
+    expect(prisma.notification.create).toHaveBeenCalledWith({
+      data: {
+        user_id: 'user-a',
+        type: 'friend_request_accepted',
+        reference_id: 'friendship-1',
+        reference_type: 'friendship',
+        is_read: false,
+      },
+    })
+  })
+
+  it('createFriendRequestAcceptedNotification 缺 requesterId 會丟錯', async () => {
+    await expect(createFriendRequestAcceptedNotification({
+      friendshipId: 'friendship-1',
+    })).rejects.toThrow('requesterId is required')
+  })
+
+  it('createFriendRequestAcceptedNotification 缺 friendshipId 會丟錯', async () => {
+    await expect(createFriendRequestAcceptedNotification({
+      requesterId: 'user-a',
     })).rejects.toThrow('friendshipId is required')
   })
 })
