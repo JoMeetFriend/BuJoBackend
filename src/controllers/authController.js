@@ -80,7 +80,7 @@ export async function login(req, res) {
   const token = signToken(identity.user.id)
   res.cookie(COOKIE_NAME, token, COOKIE_OPTIONS)
 
-  return res.status(200).json({ user: { id: identity.user.id, display_name: identity.user.display_name } })
+  return res.status(200).json({ user: { id: identity.user.id, display_name: identity.user.display_name, avatar_url: identity.user.avatar_url } })
 }
 
 export function logout(req, res) {
