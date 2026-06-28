@@ -12,16 +12,16 @@ async function main() {
   // Users (4 個使用者)
   // ==================
   const alice = await prisma.user.create({
-    data: { display_name: 'Alice', avatar_url: 'https://i.pravatar.cc/150?u=alice' }
+    data: { name: 'Alice', avatar_url: 'https://i.pravatar.cc/150?u=alice' }
   })
   const bob = await prisma.user.create({
-    data: { display_name: 'Bob', avatar_url: 'https://i.pravatar.cc/150?u=bob' }
+    data: { name: 'Bob', avatar_url: 'https://i.pravatar.cc/150?u=bob' }
   })
   const carol = await prisma.user.create({
-    data: { display_name: 'Carol', avatar_url: 'https://i.pravatar.cc/150?u=carol' }
+    data: { name: 'Carol', avatar_url: 'https://i.pravatar.cc/150?u=carol' }
   })
   const dave = await prisma.user.create({
-    data: { display_name: 'Dave', avatar_url: 'https://i.pravatar.cc/150?u=dave' }
+    data: { name: 'Dave', avatar_url: 'https://i.pravatar.cc/150?u=dave' }
   })
 
   console.log('✅ Users 建立完成')
