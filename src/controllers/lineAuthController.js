@@ -17,8 +17,11 @@ export async function lineLogin(req, res) {
 const FRONTEND_URL = () => process.env.FRONTEND_URL || 'http://localhost:5173'
 
 export async function lineCallback(req, res) {
-  const { code, state } = req.query
+  const { code, state, error } = req.query
 
+  if (error === 'access_denied') {
+    return res.redirect(`${FRONTEND_URL()}?error=line_cancelled`)
+  }
   if (!code) {
     return res.redirect(`${FRONTEND_URL()}?error=line_login_failed`)
   }
