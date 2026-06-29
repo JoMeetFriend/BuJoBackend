@@ -11,7 +11,7 @@ router.post('/signup', signupLimiter, signup)
 router.post('/login', loginLimiter, login)
 router.post('/logout', logout)
 router.get('/me', authenticate, me)
-router.post('/google', googleLogin)
+router.post('/google', loginLimiter, googleLogin)
 router.get('/line', loginLimiter, lineLogin)
 router.get('/line/callback', lineCallback)
 
