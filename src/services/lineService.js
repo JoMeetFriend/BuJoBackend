@@ -26,6 +26,10 @@ export async function createLineAuthorizationUrl() {
   const state = randomToken();
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
+  await prisma.oAuthAttempt.deleteMany({
+    where: { expires_at: { lt: new Date() } },
+  });
+
   await prisma.oAuthAttempt.create({
     data: {
       state_hash: sha256(state),
