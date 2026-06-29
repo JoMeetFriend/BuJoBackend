@@ -15,7 +15,7 @@ export async function createActivity(req, res) {
   const confirmedEnd = allDay ? null : parseDateTime(endDate, endTime)
   const windowStart = parseDate(startDate)
   const windowEnd = parseDate(endDate)
-  const deadlineAt = deadline ? new Date(deadline) : null
+  const deadlineAt = deadline ? new Date(deadline) : (confirmedStart ?? windowStart)
 
   const activity = await prisma.activity.create({
     data: {

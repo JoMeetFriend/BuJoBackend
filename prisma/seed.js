@@ -12,16 +12,16 @@ async function main() {
   // Users (4 個使用者)
   // ==================
   const alice = await prisma.user.create({
-    data: { name: 'Alice', avatar_url: 'https://i.pravatar.cc/150?u=alice' }
+    data: { display_name: 'Alice', avatar_url: 'https://i.pravatar.cc/150?u=alice' }
   })
   const bob = await prisma.user.create({
-    data: { name: 'Bob', avatar_url: 'https://i.pravatar.cc/150?u=bob' }
+    data: { display_name: 'Bob', avatar_url: 'https://i.pravatar.cc/150?u=bob' }
   })
   const carol = await prisma.user.create({
-    data: { name: 'Carol', avatar_url: 'https://i.pravatar.cc/150?u=carol' }
+    data: { display_name: 'Carol', avatar_url: 'https://i.pravatar.cc/150?u=carol' }
   })
   const dave = await prisma.user.create({
-    data: { name: 'Dave', avatar_url: 'https://i.pravatar.cc/150?u=dave' }
+    data: { display_name: 'Dave', avatar_url: 'https://i.pravatar.cc/150?u=dave' }
   })
 
   console.log('✅ Users 建立完成')
@@ -96,6 +96,7 @@ async function main() {
   // ==================
   // Activities
   // 以 Alice 登入為主要測試視角
+  // deadline_at 設為 confirmed_start 前一天同時間（預設規則）
   // ==================
   const now = new Date()
   const future = (days, hour = 14) => {
@@ -117,11 +118,12 @@ async function main() {
       schedule: {
         create: {
           schedule_type: 'slot',
-          is_all_day: false,
+
           window_start: future(4),
           window_end: future(4),
           confirmed_start: future(4, 17),
           confirmed_end: future(4, 21),
+          deadline_at: future(3, 17),
         },
       },
       participants: { create: { user_id: alice.id } },
@@ -136,15 +138,17 @@ async function main() {
       title: 'Alice 的爬山',
       description: '輕鬆路線，新手也可以！',
       location: '象山步道',
+      max_participants: 10,
       status: 'confirmed',
       schedule: {
         create: {
           schedule_type: 'slot',
-          is_all_day: false,
+
           window_start: future(7),
           window_end: future(7),
           confirmed_start: future(7, 8),
           confirmed_end: future(7, 12),
+          deadline_at: future(6, 8),
         },
       },
       participants: {
@@ -169,11 +173,12 @@ async function main() {
       schedule: {
         create: {
           schedule_type: 'slot',
-          is_all_day: false,
+
           window_start: future(5),
           window_end: future(5),
           confirmed_start: future(5, 19),
           confirmed_end: future(5, 22),
+          deadline_at: future(4, 19),
         },
       },
       participants: { create: { user_id: bob.id } },
@@ -193,11 +198,12 @@ async function main() {
       schedule: {
         create: {
           schedule_type: 'slot',
-          is_all_day: false,
+
           window_start: future(3),
           window_end: future(3),
           confirmed_start: future(3, 15),
           confirmed_end: future(3, 17),
+          deadline_at: future(2, 15),
         },
       },
       participants: {
@@ -222,11 +228,12 @@ async function main() {
       schedule: {
         create: {
           schedule_type: 'slot',
-          is_all_day: false,
+
           window_start: future(10),
           window_end: future(10),
           confirmed_start: future(10, 20),
           confirmed_end: future(10, 22),
+          deadline_at: future(9, 20),
         },
       },
       participants: {
