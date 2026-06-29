@@ -94,12 +94,46 @@ export async function me(req, res) {
   try {
     const user = await prisma.user.findUnique({
       where: { id: req.user.userId },
-      select: { id: true, display_name: true, avatar_url: true, created_at: true },
+      select: {
+        id: true,
+        display_name: true,
+        avatar_url: true,
+        created_at: true,
+        identities: { select: { provider: true, email: true } },
+      },
     })
     if (!user) return res.status(404).json({ message: '用戶不存在' })
     return res.json({ user })
   } catch (error) {
     console.error('me 錯誤：', error)
+    return res.status(500).json({ message: '伺服器錯誤' })
+  }
+}
+
+export async function unlinkProvider(req, res) {
+  const { provider } = req.params
+  const userId = req.user.userId
+
+  if (!['local', 'google', 'line'].includes(provider)) {
+    return res.status(400).json({ error: '不支援的登入方式' })
+  }
+
+  try {
+    const identities = await prisma.userIdentity.findMany({ where: { user_id: userId } })
+
+    if (identities.length <= 1) {
+      return res.status(400).json({ error: '無法解除最後一個登入方式，請先新增其他登入方式' })
+    }
+
+    const target = identities.find((i) => i.provider === provider)
+    if (!target) {
+      return res.status(404).json({ error: '該登入方式未連結' })
+    }
+
+    await prisma.userIdentity.delete({ where: { id: target.id } })
+    return res.json({ message: '已解除連結' })
+  } catch (error) {
+    console.error('unlink 錯誤：', error)
     return res.status(500).json({ message: '伺服器錯誤' })
   }
 }
