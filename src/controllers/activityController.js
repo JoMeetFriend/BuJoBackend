@@ -28,7 +28,6 @@ export async function createActivity(req, res) {
       schedule: {
         create: {
           schedule_type: 'slot',
-          is_all_day: allDay ?? false,
           window_start: windowStart,
           window_end: windowEnd,
           confirmed_start: confirmedStart,
@@ -308,7 +307,7 @@ function formatCard(act, userId) {
   let time = ''
 
   if (sched) {
-    if (sched.is_all_day) {
+    if (!sched.confirmed_start) {
       date = formatShortDate(sched.window_start)
       time = '整天'
     } else if (sched.confirmed_start) {
