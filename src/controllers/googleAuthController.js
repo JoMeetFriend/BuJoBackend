@@ -17,7 +17,7 @@ export async function googleLink(req, res) {
       audience: process.env.GOOGLE_CLIENT_ID,
     })
     const payload = ticket.getPayload()
-    if (!payload?.email) return res.status(401).json({ error: '無法取得使用者資訊' })
+    if (!payload?.email || !payload.email_verified) return res.status(401).json({ error: '無法取得使用者資訊' })
 
     const existing = await prisma.userIdentity.findUnique({
       where: {
@@ -59,7 +59,7 @@ export async function googleLogin(req, res) {
     })
     const payload = ticket.getPayload()
 
-    if (!payload?.email) {
+    if (!payload?.email || !payload.email_verified) {
       return res.status(401).json({ error: '無法取得使用者資訊' })
     }
 
