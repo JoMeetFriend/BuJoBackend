@@ -1,3 +1,5 @@
+import { jest } from "@jest/globals";
+
 const prisma = {
   user: {
     create: jest.fn(),
@@ -7,6 +9,11 @@ const prisma = {
     findFirst: jest.fn(),
     create: jest.fn(),
   },
-}
+  friendship: {
+    findFirst: jest.fn(),
+    create: jest.fn(),
+    findMany: jest.fn(),
+  },
+};
 
-export default prisma
+export default prisma;
