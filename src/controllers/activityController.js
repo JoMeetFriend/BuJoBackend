@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js'
+import { notifyFriendsActivityCreated } from '../services/notificationService.js'
 
 export async function createActivity(req, res) {
   const { title, location, limit, note, startDate, startTime, endDate, endTime, allDay, deadline } = req.body
@@ -42,6 +43,11 @@ export async function createActivity(req, res) {
         create: { name: title },
       },
     },
+  })
+
+  await notifyFriendsActivityCreated({
+    creatorId,
+    activityId: activity.id,
   })
 
   return res.status(201).json({ activity: { id: activity.id } })

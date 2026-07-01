@@ -126,13 +126,11 @@ export async function notifyFriendsActivityCreated(
     },
   });
 
-  const friendIds = friendships
-    .map((friendship) =>
-      friendship.requester_id === creatorId
-        ? friendship.receiver_id
-        : friendship.requester_id,
-    )
-    .filter((friendId) => friendId !== creatorId);
+  const friendIds = friendships.map((friendship) =>
+    friendship.requester_id === creatorId
+      ? friendship.receiver_id
+      : friendship.requester_id,
+  );
 
   if (friendIds.length === 0) {
     return { count: 0 };
