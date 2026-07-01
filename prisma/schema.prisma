@@ -255,6 +255,7 @@ model NotificationPreference {
 model OAuthAttempt {
   id          String    @id @default(uuid())
   state_hash  String    @unique
+  user_id     String?
   expires_at  DateTime
   consumed_at DateTime?
   created_at  DateTime  @default(now())
