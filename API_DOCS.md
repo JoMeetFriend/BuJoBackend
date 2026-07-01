@@ -250,6 +250,93 @@ const me = await fetch("http://localhost:3000/api/auth/me", {
 { "message": "已經是好友或已發送過請求" }
 ```
 
+### POST `/api/friendships/request` — 發送好友邀請並通知對方 🔒
+
+> 需要登入（cookie 中有效的 `token`）。A 邀請 B 時，會建立 `pending` friendship，並建立給 B 的 `friend_request_created` 站內通知。
+
+**Request Body**
+
+| 欄位          | 類型   | 必填 | 說明           |
+| ------------- | ------ | ---- | -------------- |
+| `receiver_id` | string | ✅   | 對方的 User ID |
+
+**Response**
+
+| 狀態碼 | 說明                        |
+| ------ | --------------------------- |
+| `201`  | 好友邀請已送出              |
+| `400`  | 缺少欄位 / 不能加自己為好友 |
+| `401`  | 未登入 / token 無效或已過期 |
+| `404`  | 找不到使用者                |
+| `409`  | 已經是好友 / 已有 pending   |
+
+```json
+// 201
+{
+  "message": "好友邀請已送出",
+  "friendship": {
+    "id": "uuid",
+    "requester_id": "user-a",
+    "receiver_id": "user-b",
+    "status": "pending"
+  }
+}
+```
+
+### POST `/api/friendships/:id/accept` — 接受好友邀請並通知邀請者 🔒
+
+> 需要登入（cookie 中有效的 `token`）。只有被邀請者可以接受。B 接受 A 的邀請後，friendship 狀態會改成 `accepted`，並建立給 A 的 `friend_request_accepted` 站內通知。
+
+**Response**
+
+| 狀態碼 | 說明                         |
+| ------ | ---------------------------- |
+| `200`  | 已接受好友邀請               |
+| `400`  | 此好友邀請無法接受           |
+| `401`  | 未登入 / token 無效或已過期  |
+| `403`  | 不是被邀請者，不能接受此邀請 |
+| `404`  | 找不到好友邀請               |
+
+```json
+// 200
+{
+  "message": "已接受好友邀請",
+  "friendship": {
+    "id": "uuid",
+    "requester_id": "user-a",
+    "receiver_id": "user-b",
+    "status": "accepted"
+  }
+}
+```
+
+### POST `/api/friendships/:id/reject` — 拒絕好友邀請 🔒
+
+> 需要登入（cookie 中有效的 `token`）。只有被邀請者可以拒絕。拒絕後 friendship 狀態會改成 `rejected`，不會建立通知。
+
+**Response**
+
+| 狀態碼 | 說明                         |
+| ------ | ---------------------------- |
+| `200`  | 已拒絕好友邀請               |
+| `400`  | 此好友邀請無法拒絕           |
+| `401`  | 未登入 / token 無效或已過期  |
+| `403`  | 不是被邀請者，不能拒絕此邀請 |
+| `404`  | 找不到好友邀請               |
+
+```json
+// 200
+{
+  "message": "已拒絕好友邀請",
+  "friendship": {
+    "id": "uuid",
+    "requester_id": "user-a",
+    "receiver_id": "user-b",
+    "status": "rejected"
+  }
+}
+```
+
 ### GET `/api/friends` — 取得好友列表 🔒
 
 > 需要登入（cookie 中有效的 `token`）
