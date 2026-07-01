@@ -21,14 +21,19 @@ export function getLineConfig() {
   return { channelId, channelSecret, callbackUrl };
 }
 
-export async function createLineAuthorizationUrl() {
+export async function createLineAuthorizationUrl(userId = null) {
   const { channelId, callbackUrl } = getLineConfig();
   const state = randomToken();
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
 
+  await prisma.oAuthAttempt.deleteMany({
+    where: { expires_at: { lt: new Date() } },
+  });
+
   await prisma.oAuthAttempt.create({
     data: {
       state_hash: sha256(state),
+      user_id: userId,
       expires_at: expiresAt,
     },
   });
@@ -104,23 +109,20 @@ export async function verifyLineState(state) {
     throw new Error("OAuth state 無效");
   }
 
-  const consumedAt = new Date();
-  const updated = await prisma.oAuthAttempt.updateMany({
-    where: {
-      state_hash: sha256(state),
-      consumed_at: null,
-      expires_at: { gt: consumedAt },
-    },
-    data: {
-      consumed_at: consumedAt,
-    },
+  const attempt = await prisma.oAuthAttempt.findUnique({
+    where: { state_hash: sha256(state) },
   });
 
-  if (updated.count === 0) {
+  if (!attempt || attempt.consumed_at || attempt.expires_at < new Date()) {
     throw new Error("OAuth state 不存在、已使用或已過期");
   }
 
-  return updated;
+  await prisma.oAuthAttempt.update({
+    where: { id: attempt.id },
+    data: { consumed_at: new Date() },
+  });
+
+  return attempt;
 }
 
 async function findLineIdentity(lineUserId) {
@@ -133,6 +135,31 @@ async function findLineIdentity(lineUserId) {
     },
     include: {
       user: true,
+    },
+  });
+}
+
+export async function linkLineUser(lineProfile, userId) {
+  const existing = await prisma.userIdentity.findUnique({
+    where: {
+      provider_provider_user_id: {
+        provider: "line",
+        provider_user_id: lineProfile.sub,
+      },
+    },
+  });
+
+  if (existing && existing.user_id !== userId) {
+    throw new Error("此 LINE 帳號已綁定其他帳號");
+  }
+  if (existing) return;
+
+  await prisma.userIdentity.create({
+    data: {
+      user_id: userId,
+      provider: "line",
+      provider_user_id: lineProfile.sub,
+      email: null,
     },
   });
 }
