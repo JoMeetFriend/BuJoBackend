@@ -203,11 +203,13 @@ model ActivitySchedule {
   schedule_type     ActivityScheduleType
   window_start      DateTime             @db.Date
   window_end        DateTime             @db.Date
-  slot_duration_min Int?                 @default(60)
-  deadline_at       DateTime
-  vote_deadline_at  DateTime?
-  confirmed_start   DateTime?
-  confirmed_end     DateTime?
+  slot_duration_min  Int?                 @default(60)
+  deadline_at        DateTime
+  vote_deadline_at   DateTime?
+  time_window_start  DateTime?
+  time_window_end    DateTime?
+  confirmed_start    DateTime?
+  confirmed_end      DateTime?
 
   activity Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
 

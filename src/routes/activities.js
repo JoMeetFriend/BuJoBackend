@@ -5,6 +5,7 @@ import {
   listActivities,
   getActivity,
   joinActivity,
+  getRankedSlots,
   confirmFormation,
   cancelActivity,
   cancelJoin,
@@ -16,6 +17,7 @@ router.get('/', authenticate, listActivities)
 router.post('/', authenticate, createActivity)
 router.get('/:id', authenticate, getActivity)
 router.post('/:id/join', authenticate, joinActivity)
+router.get('/:id/ranked-slots', authenticate, getRankedSlots)
 router.post('/:id/confirm-formation', authenticate, confirmFormation)
 router.post('/:id/cancel', authenticate, cancelActivity)
 router.delete('/:id/join', authenticate, cancelJoin)
