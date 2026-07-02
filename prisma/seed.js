@@ -5,9 +5,6 @@ const prisma = new PrismaClient()
 async function main() {
   console.log('🌱 開始種入假資料...')
 
-  // 測試帳號統一密碼：test1234
-  const testHash = await bcrypt.hash('test1234', 10)
-
   // ==================
   // Users (4 個使用者)
   // ==================
@@ -276,7 +273,7 @@ async function main() {
   console.log('')
   console.log('🎉 假資料全部種入完成！')
   console.log('')
-  console.log('測試帳號（密碼統一：test1234）：')
+  console.log('測試帳號（密碼統一：password123）：')
   console.log('  alice@gmail.com   → Alice，與 Bob 互為好友')
   console.log('  carol@example.com → Carol，與 Dave pending')
 }
