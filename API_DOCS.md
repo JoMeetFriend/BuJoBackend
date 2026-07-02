@@ -363,3 +363,86 @@ const me = await fetch("http://localhost:3000/api/auth/me", {
 // 401
 { "message": "未登入" }
 ```
+
+## Notifications
+
+### GET `/api/notifications` — 取得通知列表 🔒
+
+> 需要登入（cookie 中有效的 `token`）。後端會組好通知文字、分類與可操作 action，前端可直接渲染。
+
+**Response**
+
+| 狀態碼 | 說明                          |
+| ------ | ----------------------------- |
+| `200`  | 成功，回傳目前登入者通知列表  |
+| `401`  | 未登入 / token 無效或已過期   |
+
+```json
+// 200
+{
+  "notifications": [
+    {
+      "id": "notification-id",
+      "type": "friend_request_created",
+      "category": "friend",
+      "message": "A 向你發送好友邀請",
+      "timeText": "10 分鐘前",
+      "isRead": false,
+      "createdAt": "2026-07-02T00:00:00.000Z",
+      "reference": {
+        "type": "friendship",
+        "id": "friendship-id",
+        "status": "pending"
+      },
+      "actions": ["accept", "reject"]
+    }
+  ]
+}
+```
+
+**通知類型**
+
+| type                      | category   | message 格式                              | actions              |
+| ------------------------- | ---------- | ----------------------------------------- | -------------------- |
+| `friend_request_created`  | `friend`   | `{requesterName} 向你發送好友邀請`        | pending 時可接受/拒絕 |
+| `friend_request_accepted` | `friend`   | `{receiverName} 接受了你的好友邀請`       | 無                   |
+| `activity_created`        | `activity` | `{creatorName} 建立了新活動：{activity}`  | 無                   |
+
+### PATCH `/api/notifications/:id/read` — 標記單筆通知已讀 🔒
+
+> 需要登入（cookie 中有效的 `token`）。只能標記自己的通知。
+
+**Response**
+
+| 狀態碼 | 說明                        |
+| ------ | --------------------------- |
+| `200`  | 已標記為已讀                |
+| `401`  | 未登入 / token 無效或已過期 |
+| `404`  | 找不到通知                  |
+
+```json
+// 200
+{ "message": "已標記為已讀" }
+
+// 404
+{ "message": "找不到通知" }
+```
+
+### PATCH `/api/notifications/read-all` — 全部通知已讀 🔒
+
+> 需要登入（cookie 中有效的 `token`）。只會更新目前登入者的未讀通知。
+
+**Response**
+
+| 狀態碼 | 說明                        |
+| ------ | --------------------------- |
+| `200`  | 已全部標記為已讀            |
+| `401`  | 未登入 / token 無效或已過期 |
+
+```json
+// 200
+{
+  "message": "已全部標記為已讀",
+  "count": 3
+}
+```
