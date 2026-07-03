@@ -1,11 +1,13 @@
 import prisma from '../lib/prisma.js'
 
+// 目前只支援情境 a（日期時間都固定，單一候選時段、免投票）。
+// 情境 b/c/d（候選時段複選投票、決選）之後串接時再實作。
+
 export async function createActivity(req, res) {
   const {
-    title, location, limit, note,
+    title, location, limit, note, type,
     startDate, startTime, endDate, endTime, allDay,
     deadline,
-    scheduleType, timeWindowStart, timeWindowEnd, slotDurationMin,
   } = req.body
   const creatorId = req.user.userId
 
@@ -19,12 +21,8 @@ export async function createActivity(req, res) {
     return res.status(400).json({ message: '流團時間為必填' })
   }
 
-  const isRange = scheduleType === 'range'
-  const confirmedStart = (!isRange && !allDay && startTime) ? parseDateTime(startDate, startTime) : null
-  const confirmedEnd   = (!isRange && !allDay && endTime)   ? parseDateTime(endDate, endTime)     : null
-  const windowStart = parseDate(startDate)
-  const windowEnd   = parseDate(endDate ?? startDate)
-  const deadlineAt  = new Date(deadline)
+  const { slotStart, slotEnd } = buildFixedSlot(startDate, startTime, endDate, endTime, allDay)
+  const deadlineAt = new Date(deadline)
 
   const activity = await prisma.activity.create({
     data: {
@@ -32,20 +30,20 @@ export async function createActivity(req, res) {
       title,
       description: note ?? null,
       location: location ?? null,
-      max_participants: limit ?? null,
+      category: type ?? null,
+      participant_target: limit ?? null,
       status: 'recruiting',
       schedule: {
         create: {
-          schedule_type: isRange ? 'range' : 'slot',
-          window_start: windowStart,
-          window_end: windowEnd,
-          confirmed_start: confirmedStart,
-          confirmed_end: confirmedEnd,
+          requires_voting: false,
           deadline_at: deadlineAt,
-          vote_deadline_at: isRange ? windowStart : null,
-          time_window_start: timeWindowStart ? new Date(timeWindowStart) : null,
-          time_window_end: timeWindowEnd ? new Date(timeWindowEnd) : null,
-          slot_duration_min: slotDurationMin ?? 60,
+        },
+      },
+      candidateSlots: {
+        create: {
+          slot_start: slotStart,
+          slot_end: slotEnd,
+          all_day: !!allDay,
         },
       },
       participants: {
@@ -96,7 +94,8 @@ export async function listActivities(req, res) {
       ],
     },
     include: {
-      schedule: true,
+      schedule: { include: { confirmedSlot: true } },
+      candidateSlots: true,
       participants: {
         where: { status: 'joined' },
         include: {
@@ -121,7 +120,8 @@ export async function getActivity(req, res) {
     where: { id },
     include: {
       creator: { select: { id: true, display_name: true, avatar_url: true } },
-      schedule: true,
+      schedule: { include: { confirmedSlot: true } },
+      candidateSlots: true,
       participants: {
         where: { status: 'joined' },
         include: {
@@ -137,18 +137,20 @@ export async function getActivity(req, res) {
   }
 
   // Lazy 狀態轉換（不用 cron，每次 GET 時觸發）
+  // 目前只處理情境 a（免投票，單一候選時段）：達標→自動成團，未達標→流團
   const now = new Date()
   const sched = activity.schedule
   let currentStatus = activity.status
 
   if (
     currentStatus === 'recruiting' &&
-    sched?.schedule_type === 'range' &&
+    sched &&
+    !sched.requires_voting &&
     now >= sched.deadline_at
   ) {
     const joinedCount = activity.participants.length
-    const minRequired = activity.max_participants ?? 1
-    if (joinedCount < minRequired) {
+    const target = activity.participant_target
+    if (target && joinedCount < target) {
       await prisma.$transaction([
         prisma.activity.update({ where: { id }, data: { status: 'cancelled' } }),
         ...activity.participants.map((p) =>
@@ -159,31 +161,18 @@ export async function getActivity(req, res) {
       ])
       currentStatus = 'cancelled'
     } else {
+      const winningSlot = activity.candidateSlots[0]
       await prisma.$transaction([
-        prisma.activity.update({ where: { id }, data: { status: 'voting' } }),
-        prisma.notification.create({
-          data: { user_id: activity.creator_id, type: 'time_to_pick', reference_id: id, reference_type: 'activity' },
-        }),
+        prisma.activity.update({ where: { id }, data: { status: 'confirmed' } }),
+        prisma.activitySchedule.update({ where: { activity_id: id }, data: { confirmed_slot_id: winningSlot.id } }),
+        ...activity.participants.map((p) =>
+          prisma.notification.create({
+            data: { user_id: p.user_id, type: 'activity_confirmed', reference_id: id, reference_type: 'activity' },
+          })
+        ),
       ])
-      currentStatus = 'voting'
+      currentStatus = 'confirmed'
     }
-  }
-
-  if (
-    currentStatus === 'voting' &&
-    sched?.vote_deadline_at &&
-    now >= sched.vote_deadline_at &&
-    !sched.confirmed_start
-  ) {
-    await prisma.$transaction([
-      prisma.activity.update({ where: { id }, data: { status: 'cancelled' } }),
-      ...activity.participants.map((p) =>
-        prisma.notification.create({
-          data: { user_id: p.user_id, type: 'activity_cancelled', reference_id: id, reference_type: 'activity' },
-        })
-      ),
-    ])
-    currentStatus = 'cancelled'
   }
 
   const isCreator = activity.creator_id === userId
@@ -195,12 +184,21 @@ export async function getActivity(req, res) {
       title: activity.title,
       location: activity.location,
       description: activity.description,
+      category: activity.category,
       status: currentStatus,
-      max_participants: activity.max_participants,
+      participant_target: activity.participant_target,
       is_creator: isCreator,
       has_joined: hasJoined,
       creator: activity.creator,
-      schedule: activity.schedule,
+      requires_voting: sched?.requires_voting ?? false,
+      deadline_at: sched?.deadline_at ?? null,
+      candidate_slots: activity.candidateSlots.map((s) => ({
+        id: s.id,
+        slot_start: s.slot_start,
+        slot_end: s.slot_end,
+        all_day: s.all_day,
+      })),
+      confirmed_slot: sched?.confirmedSlot ?? null,
       participants: activity.participants.map((p) => ({
         id: p.user_id,
         display_name: p.user.display_name,
@@ -214,7 +212,6 @@ export async function getActivity(req, res) {
 export async function joinActivity(req, res) {
   const { id } = req.params
   const userId = req.user.userId
-  const { availability } = req.body
 
   const activity = await prisma.activity.findUnique({
     where: { id },
@@ -228,14 +225,13 @@ export async function joinActivity(req, res) {
   if (activity.status !== 'recruiting') return res.status(400).json({ message: '此活動不在揪團中' })
   if (activity.creator_id === userId) return res.status(400).json({ message: '不能報名自己建立的活動' })
 
-  const currentCount = activity.participants.length
-  if (activity.max_participants && currentCount >= activity.max_participants) {
-    return res.status(400).json({ message: '活動人數已滿' })
+  if (activity.schedule?.requires_voting) {
+    return res.status(400).json({ message: '此活動需要投票候選時段，此功能尚未支援' })
   }
 
-  const isRange = activity.schedule?.schedule_type === 'range'
-  if (isRange && (!availability || availability.length === 0)) {
-    return res.status(400).json({ message: '此活動需要填寫可用時段才能報名' })
+  const currentCount = activity.participants.length
+  if (activity.participant_target && currentCount >= activity.participant_target) {
+    return res.status(400).json({ message: '活動人數已滿' })
   }
 
   const existing = await prisma.activityParticipant.findUnique({
@@ -243,20 +239,8 @@ export async function joinActivity(req, res) {
   })
   if (existing?.status === 'joined') return res.status(400).json({ message: '你已報名此活動' })
 
-  // 將 availability 轉為 ActivityAvailability 記錄
-  const availabilityRecords = isRange
-    ? availability.flatMap(({ date, timeRanges }) =>
-        timeRanges.map(({ from, to }) => ({
-          activity_id: id,
-          user_id: userId,
-          slot_start: parseDateTimeStr(date, from),
-          slot_end: parseDateTimeStr(date, to),
-        }))
-      )
-    : []
-
   const newCount = currentCount + 1
-  const notifyCreator = activity.max_participants && newCount >= activity.max_participants
+  const notifyCreator = activity.participant_target && newCount >= activity.participant_target
 
   await prisma.$transaction([
     existing
@@ -267,13 +251,6 @@ export async function joinActivity(req, res) {
       : prisma.activityParticipant.create({
           data: { activity_id: id, user_id: userId },
         }),
-    ...availabilityRecords.map((r) =>
-      prisma.activityAvailability.upsert({
-        where: { activity_id_user_id_slot_start: { activity_id: r.activity_id, user_id: r.user_id, slot_start: r.slot_start } },
-        create: r,
-        update: { slot_end: r.slot_end },
-      })
-    ),
     ...(notifyCreator
       ? [prisma.notification.create({
           data: { user_id: activity.creator_id, type: 'formation_ready', reference_id: id, reference_type: 'activity' },
@@ -285,125 +262,18 @@ export async function joinActivity(req, res) {
 }
 
 export async function getRankedSlots(req, res) {
-  const { id } = req.params
-  const userId = req.user.userId
-
-  const activity = await prisma.activity.findUnique({
-    where: { id },
-    include: {
-      schedule: true,
-      participants: { where: { status: 'joined' } },
-      availabilities: true,
-    },
-  })
-
-  if (!activity) return res.status(404).json({ message: '活動不存在' })
-  if (activity.creator_id !== userId) return res.status(403).json({ message: '只有創建者可以查看配對結果' })
-  if (activity.status !== 'voting') return res.status(400).json({ message: '活動尚未進入選時間階段' })
-
-  const sched = activity.schedule
-  const totalParticipants = activity.participants.length
-  const submittedUserIds = new Set(activity.availabilities.map((a) => a.user_id))
-  const submittedCount = submittedUserIds.size
-
-  // 生成候選時段
-  const candidates = generateCandidateSlots(sched)
-
-  // 計算每個候選時段的 overlap 人數
-  const participantIds = activity.participants.map((p) => p.user_id)
-  const scored = candidates.map((cand) => {
-    const availableUsers = participantIds.filter((pid) =>
-      activity.availabilities.some(
-        (a) =>
-          a.user_id === pid &&
-          a.slot_start <= cand.slot_end &&
-          a.slot_end >= cand.slot_start
-      )
-    )
-    return { ...cand, count: availableUsers.length, userIds: availableUsers }
-  })
-
-  // 排序：人數多 → 時間早
-  scored.sort((a, b) => b.count - a.count || a.slot_start - b.slot_start)
-
-  // 撈頭像資料
-  const users = await prisma.user.findMany({
-    where: { id: { in: participantIds } },
-    select: { id: true, display_name: true, avatar_url: true },
-  })
-  const userMap = Object.fromEntries(users.map((u) => [u.id, u]))
-
-  const toSlotResult = (s) => ({
-    slot_start: s.slot_start.toISOString(),
-    slot_end: s.slot_end.toISOString(),
-    count: s.count,
-    users: s.userIds.map((uid) => userMap[uid]).filter(Boolean),
-  })
-
-  const perfectOverlap = scored.filter((s) => s.count === totalParticipants).map(toSlotResult)
-  const partialOverlap = scored.filter((s) => s.count > 0 && s.count < totalParticipants).slice(0, 3).map(toSlotResult)
-
-  return res.json({ total_participants: totalParticipants, submitted_count: submittedCount, perfect_overlap: perfectOverlap, partial_overlap: partialOverlap })
-}
-
-// ── 候選時段生成 ────────────────────────────────────────────
-function generateCandidateSlots(sched) {
-  const candidates = []
-  const slotMs = (sched.slot_duration_min ?? 60) * 60 * 1000
-
-  // Mode C：候選單位是「日期 × 固定時段」
-  if (sched.confirmed_start === null && sched.time_window_start && sched.time_window_end) {
-    const twStart = sched.time_window_start
-    const twEnd = sched.time_window_end
-    const cur = new Date(sched.window_start)
-    const end = new Date(sched.window_end)
-    while (cur <= end) {
-      const slot_start = new Date(cur)
-      slot_start.setHours(twStart.getHours(), twStart.getMinutes(), 0, 0)
-      const slot_end = new Date(cur)
-      slot_end.setHours(twEnd.getHours(), twEnd.getMinutes(), 0, 0)
-      candidates.push({ slot_start, slot_end })
-      cur.setDate(cur.getDate() + 1)
-    }
-    return candidates
-  }
-
-  // Mode B / D：按 slot_duration_min 切片
-  const cur = new Date(sched.window_start)
-  const endDate = new Date(sched.window_end)
-  while (cur <= endDate) {
-    const dayStart = new Date(cur)
-    dayStart.setHours(
-      sched.time_window_start ? sched.time_window_start.getHours() : 0,
-      sched.time_window_start ? sched.time_window_start.getMinutes() : 0,
-      0, 0
-    )
-    const dayEnd = new Date(cur)
-    dayEnd.setHours(
-      sched.time_window_end ? sched.time_window_end.getHours() : 23,
-      sched.time_window_end ? sched.time_window_end.getMinutes() : 59,
-      0, 0
-    )
-    let slotStart = new Date(dayStart)
-    while (slotStart.getTime() + slotMs <= dayEnd.getTime() + 1) {
-      const slotEnd = new Date(slotStart.getTime() + slotMs)
-      candidates.push({ slot_start: new Date(slotStart), slot_end: slotEnd })
-      slotStart = slotEnd
-    }
-    cur.setDate(cur.getDate() + 1)
-  }
-  return candidates
+  return res.status(400).json({ message: '此功能尚未支援' })
 }
 
 export async function confirmFormation(req, res) {
   const { id } = req.params
   const userId = req.user.userId
-  const { confirmedStart, confirmedEnd } = req.body
 
   const activity = await prisma.activity.findUnique({
     where: { id },
     include: {
       schedule: true,
+      candidateSlots: true,
       participants: { where: { status: 'joined' } },
     },
   })
@@ -411,25 +281,18 @@ export async function confirmFormation(req, res) {
   if (!activity) return res.status(404).json({ message: '活動不存在' })
   if (activity.creator_id !== userId) return res.status(403).json({ message: '只有創建者可以確認成團' })
 
-  const isRange = activity.schedule?.schedule_type === 'range'
-
-  if (isRange) {
-    if (activity.status !== 'voting') return res.status(400).json({ message: '此活動狀態不允許確認時間' })
-    if (!confirmedStart || !confirmedEnd) return res.status(400).json({ message: '請提供確認的開始與結束時間' })
-  } else {
-    if (activity.status !== 'recruiting') return res.status(400).json({ message: '此活動狀態不允許確認成團' })
+  if (activity.schedule?.requires_voting) {
+    return res.status(400).json({ message: '此功能尚未支援' })
   }
 
+  if (activity.status !== 'recruiting') return res.status(400).json({ message: '此活動狀態不允許確認成團' })
+
+  const winningSlot = activity.candidateSlots[0]
   const notifyTargets = activity.participants.filter((p) => p.user_id !== userId)
 
   await prisma.$transaction([
     prisma.activity.update({ where: { id }, data: { status: 'confirmed' } }),
-    ...(isRange
-      ? [prisma.activitySchedule.update({
-          where: { activity_id: id },
-          data: { confirmed_start: new Date(confirmedStart), confirmed_end: new Date(confirmedEnd) },
-        })]
-      : []),
+    prisma.activitySchedule.update({ where: { activity_id: id }, data: { confirmed_slot_id: winningSlot.id } }),
     ...notifyTargets.map((p) =>
       prisma.notification.create({
         data: {
@@ -514,18 +377,15 @@ export async function cancelJoin(req, res) {
 
 function formatCard(act, userId) {
   const sched = act.schedule
+  const displaySlot = sched?.confirmedSlot ?? (!sched?.requires_voting ? act.candidateSlots[0] : null)
+
   let date = ''
   let time = ''
-
-  if (sched) {
-    if (!sched.confirmed_start) {
-      date = formatShortDate(sched.window_start)
-      time = '整天'
-    } else if (sched.confirmed_start) {
-      date = formatShortDate(sched.confirmed_start)
-      const end = sched.confirmed_end ? ` - ${formatTime(sched.confirmed_end)}` : ''
-      time = `${formatTime(sched.confirmed_start)}${end}`
-    }
+  if (displaySlot) {
+    date = formatShortDate(displaySlot.slot_start)
+    time = displaySlot.all_day ? '整天' : `${formatTime(displaySlot.slot_start)} - ${formatTime(displaySlot.slot_end)}`
+  } else if (sched?.requires_voting) {
+    time = '投票中'
   }
 
   return {
@@ -542,7 +402,7 @@ function formatCard(act, userId) {
       avatar_url: p.user.avatar_url,
     })),
     current_count: act.participants.length,
-    max_participants: act.max_participants,
+    participant_target: act.participant_target,
   }
 }
 
@@ -574,15 +434,19 @@ function parseDateTime(dateStr, timeStr) {
   return date
 }
 
-// 給 joinActivity 用：date = 'YYYY-MM-DD'，timeStr = '上午 10:00' 格式
-function parseDateTimeStr(dateStr, timeStr) {
-  const [year, month, day] = dateStr.split('-').map(Number)
-  const date = new Date(year, month - 1, day)
-  const match = timeStr?.match(/^(上午|下午)\s+(\d+):(\d+)$/)
-  if (!match) return date
-  let hour = Number(match[2])
-  if (match[1] === '下午' && hour !== 12) hour += 12
-  if (match[1] === '上午' && hour === 12) hour = 0
-  date.setHours(hour, Number(match[3]), 0, 0)
-  return date
+// 情境 a：把表單的日期/時間欄位組成單一候選時段（slot_start ~ slot_end）
+function buildFixedSlot(startDate, startTime, endDate, endTime, allDay) {
+  if (allDay) {
+    const slotStart = parseDate(startDate)
+    const slotEnd = parseDate(endDate ?? startDate)
+    slotEnd.setHours(23, 59, 59, 999)
+    return { slotStart, slotEnd }
+  }
+
+  const slotStart = startTime ? parseDateTime(startDate, startTime) : parseDate(startDate)
+  const slotEnd = endTime
+    ? parseDateTime(endDate ?? startDate, endTime)
+    : new Date(slotStart.getTime() + 60 * 60 * 1000)
+
+  return { slotStart, slotEnd }
 }
