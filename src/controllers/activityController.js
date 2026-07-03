@@ -1,16 +1,20 @@
 import prisma from '../lib/prisma.js'
 
-// 情境 a（日期時間都固定，單一候選時段、免投票）與情境 b（日期固定、候選時段複選投票，含到期判定與決選投票）已支援。
-// 情境 c/d（候選日期複選）之後串接時再實作。
+// 情境 a（日期時間都固定，單一候選時段、免投票）、情境 b（日期固定、候選時段複選投票）、
+// 情境 c（候選日期複選、統一時間）皆已支援，皆含到期判定與決選投票。情境 d（候選日期各自不同時段）之後再實作。
 
 export async function createActivity(req, res) {
   const {
     title, location, limit, note, type, deadline,
     startDate, startTime, endDate, endTime, allDay,
-    singleDate, slots, creatorSlotIndexes,
+    singleDate, slots,
+    candidateDates, uniformTime,
+    creatorSlotIndexes,
   } = req.body
   const creatorId = req.user.userId
-  const isVoting = Array.isArray(slots) && slots.length > 0
+  const isVotingB = Array.isArray(slots) && slots.length > 0
+  const isVotingC = Array.isArray(candidateDates) && candidateDates.length > 0
+  const isVoting = isVotingB || isVotingC
 
   if (!title) {
     return res.status(400).json({ message: '活動名稱為必填' })
@@ -20,24 +24,31 @@ export async function createActivity(req, res) {
   }
 
   let candidateSlotsData
-  if (isVoting) {
+  if (isVotingB) {
     if (!singleDate) {
       return res.status(400).json({ message: '活動日期為必填' })
     }
     candidateSlotsData = buildVoteSlots(singleDate, slots)
-
-    if (!Array.isArray(creatorSlotIndexes) || creatorSlotIndexes.length === 0) {
-      return res.status(400).json({ message: '請選擇建立者自己方便的候選時段' })
+  } else if (isVotingC) {
+    if (!uniformTime?.startTime || !uniformTime?.endTime) {
+      return res.status(400).json({ message: '請設定統一時間' })
     }
-    if (!creatorSlotIndexes.every((i) => Number.isInteger(i) && i >= 0 && i < candidateSlotsData.length)) {
-      return res.status(400).json({ message: '候選時段索引無效' })
-    }
+    candidateSlotsData = buildCandidateDateSlots(candidateDates, uniformTime)
   } else {
     if (!startDate) {
       return res.status(400).json({ message: '開始日期為必填' })
     }
     const { slotStart, slotEnd } = buildFixedSlot(startDate, startTime, endDate, endTime, allDay)
     candidateSlotsData = [{ slot_start: slotStart, slot_end: slotEnd, all_day: !!allDay }]
+  }
+
+  if (isVoting) {
+    if (!Array.isArray(creatorSlotIndexes) || creatorSlotIndexes.length === 0) {
+      return res.status(400).json({ message: '請選擇建立者自己方便的候選時段' })
+    }
+    if (!creatorSlotIndexes.every((i) => Number.isInteger(i) && i >= 0 && i < candidateSlotsData.length)) {
+      return res.status(400).json({ message: '候選時段索引無效' })
+    }
   }
 
   const deadlineAt = new Date(deadline)
@@ -642,6 +653,15 @@ function buildVoteSlots(singleDate, slots) {
   return slots.map(({ startTime, endTime }) => ({
     slot_start: parseDateTime(singleDate, startTime),
     slot_end: parseDateTime(singleDate, endTime),
+    all_day: false,
+  }))
+}
+
+// 情境 c：複選的候選日期，套用同一組「統一時間」，各自展開成一筆獨立的候選時段
+function buildCandidateDateSlots(candidateDates, uniformTime) {
+  return candidateDates.map((date) => ({
+    slot_start: parseDateTime(date, uniformTime.startTime),
+    slot_end: parseDateTime(date, uniformTime.endTime),
     all_day: false,
   }))
 }
