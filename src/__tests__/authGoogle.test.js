@@ -1,5 +1,13 @@
 import { jest } from '@jest/globals'
 
+const mockVerifyIdToken = jest.fn()
+
+jest.unstable_mockModule('google-auth-library', () => ({
+  OAuth2Client: jest.fn(() => ({
+    verifyIdToken: mockVerifyIdToken,
+  })),
+}))
+
 jest.unstable_mockModule('../lib/prisma.js', () => ({
   default: {
     user: { create: jest.fn(), findUnique: jest.fn() },
@@ -12,18 +20,20 @@ const { default: app } = await import('../app.js')
 const { default: prisma } = await import('../lib/prisma.js')
 
 beforeEach(() => {
-  global.fetch = jest.fn()
+  jest.clearAllMocks()
+  process.env.GOOGLE_CLIENT_ID = 'test-google-client-id'
+  process.env.JWT_SECRET = 'test-jwt-secret'
 })
 
 function mockGoogleSuccess(overrides = {}) {
-  global.fetch.mockResolvedValueOnce({
-    json: jest.fn().mockResolvedValueOnce({
+  mockVerifyIdToken.mockResolvedValueOnce({
+    getPayload: () => ({
       email: 'test@gmail.com',
       sub: 'google-id-123',
       name: 'Test User',
       picture: 'https://avatar.example.com/photo.jpg',
       ...overrides,
-    })
+    }),
   })
 }
 
@@ -80,8 +90,8 @@ describe('POST /api/auth/google', () => {
   })
 
   test('Google token 無效（沒有 email）→ 回傳 401', async () => {
-    global.fetch.mockResolvedValueOnce({
-      json: jest.fn().mockResolvedValueOnce({})
+    mockVerifyIdToken.mockResolvedValueOnce({
+      getPayload: () => ({}),
     })
 
     const res = await request(app)
@@ -92,8 +102,8 @@ describe('POST /api/auth/google', () => {
     expect(res.body.error).toBe('無法取得使用者資訊')
   })
 
-  test('Google API 掛掉（fetch 噴錯）→ 回傳 500', async () => {
-    global.fetch.mockRejectedValueOnce(new Error('Network error'))
+  test('Google ID token 驗證噴錯 → 回傳 500', async () => {
+    mockVerifyIdToken.mockRejectedValueOnce(new Error('Network error'))
 
     const res = await request(app)
       .post('/api/auth/google')

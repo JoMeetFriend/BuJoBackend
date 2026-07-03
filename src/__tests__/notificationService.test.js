@@ -161,7 +161,7 @@ describe('notificationService', () => {
     })
     expect(sendLinePushMessage).toHaveBeenCalledWith({
       to: 'U-line-b',
-      text: 'A 向你發送好友邀請',
+      text: 'A 邀請你成為好友，快去 BuJo 看看吧！',
     })
   })
 
