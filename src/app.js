@@ -2,6 +2,7 @@ import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import { fileURLToPath } from "node:url";
 import authRoutes from "./routes/auth.js";
 import friendshipRoutes from "./routes/friendships.js";
 import activityRoutes from "./routes/activities.js";
@@ -25,6 +26,10 @@ app.use(cors({
 }))
 app.use(express.json())
 app.use(cookieParser())
+app.use(
+  "/uploads",
+  express.static(fileURLToPath(new URL("../uploads", import.meta.url))),
+)
 
 app.get("/", (req, res) => {
   res.json({ message: "Bujo backend is running" });
