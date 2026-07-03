@@ -32,10 +32,13 @@ export async function createActivity(req, res) {
     }
     candidateSlotsData = buildVoteSlots(singleDate, slots)
   } else if (isVotingC) {
-    if (!uniformTime?.startTime || !uniformTime?.endTime) {
-      return res.status(400).json({ message: '請設定統一時間' })
+    if (uniformTime?.allDay) {
+      candidateSlotsData = buildCandidateDateAllDaySlots(candidateDates)
+    } else if (uniformTime?.startTime && uniformTime?.endTime) {
+      candidateSlotsData = buildCandidateDateSlots(candidateDates, uniformTime)
+    } else {
+      return res.status(400).json({ message: '請設定統一時間或選擇整日' })
     }
-    candidateSlotsData = buildCandidateDateSlots(candidateDates, uniformTime)
   } else if (isVotingD) {
     if (!dateSlots.every((s) => s.date && s.startTime && s.endTime)) {
       return res.status(400).json({ message: '每個候選日期都需要設定時段' })
@@ -671,6 +674,16 @@ function buildCandidateDateSlots(candidateDates, uniformTime) {
     slot_end: parseDateTime(date, uniformTime.endTime),
     all_day: false,
   }))
+}
+
+// 情境 c：整日模式，每個候選日期展開成當天 00:00 ~ 23:59:59 的候選時段
+function buildCandidateDateAllDaySlots(candidateDates) {
+  return candidateDates.map((date) => {
+    const slotStart = parseDate(date)
+    const slotEnd = parseDate(date)
+    slotEnd.setHours(23, 59, 59, 999)
+    return { slot_start: slotStart, slot_end: slotEnd, all_day: true }
+  })
 }
 
 // 情境 d：每個候選日期各自帶自己的時段（date + startTime + endTime），逐筆轉成候選時段
