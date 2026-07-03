@@ -11,14 +11,20 @@ import notificationRoutes from "./routes/notifications.js";
 
 const app = express();
 
-app.use(
-  cors({
-    origin: process.env.FRONTEND_URL,
-    credentials: true,
-  }),
-);
-app.use(express.json());
-app.use(cookieParser());
+const allowedOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').map(o => o.trim()).filter(Boolean)
+
+app.use(cors({
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, origin)
+    } else {
+      callback(new Error('Not allowed by CORS'))
+    }
+  },
+  credentials: true,
+}))
+app.use(express.json())
+app.use(cookieParser())
 
 app.get("/", (req, res) => {
   res.json({ message: "Bujo backend is running" });

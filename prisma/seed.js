@@ -1,94 +1,94 @@
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+
 const prisma = new PrismaClient()
 
 async function main() {
   console.log('🌱 開始種入假資料...')
 
-  // 測試帳號統一密碼：test1234
-  const testHash = await bcrypt.hash('test1234', 10)
-
   // ==================
   // Users (4 個使用者)
   // ==================
   const alice = await prisma.user.create({
-    data: { display_name: 'Alice', avatar_url: 'https://i.pravatar.cc/150?u=alice' }
+    data: { display_name: 'Alice', avatar_url: 'https://i.pravatar.cc/150?u=alice' },
   })
   const bob = await prisma.user.create({
-    data: { display_name: 'Bob', avatar_url: 'https://i.pravatar.cc/150?u=bob' }
+    data: { display_name: 'Bob', avatar_url: 'https://i.pravatar.cc/150?u=bob' },
   })
   const carol = await prisma.user.create({
-    data: { display_name: 'Carol', avatar_url: 'https://i.pravatar.cc/150?u=carol' }
+    data: { display_name: 'Carol', avatar_url: 'https://i.pravatar.cc/150?u=carol' },
   })
   const dave = await prisma.user.create({
-    data: { display_name: 'Dave', avatar_url: 'https://i.pravatar.cc/150?u=dave' }
+    data: { display_name: 'Dave', avatar_url: 'https://i.pravatar.cc/150?u=dave' },
   })
 
   console.log('✅ Users 建立完成')
+  console.log(`   Alice ID: ${alice.id}  後五碼: ${alice.id.slice(-5)}`)
+  console.log(`   Bob   ID: ${bob.id}  後五碼: ${bob.id.slice(-5)}`)
+  console.log(`   Carol ID: ${carol.id}  後五碼: ${carol.id.slice(-5)}`)
+  console.log(`   Dave  ID: ${dave.id}  後五碼: ${dave.id.slice(-5)}`)
 
   // ==================
   // UserIdentities
-  // Alice: Google + local（可用 alice@gmail.com / test1234 登入）
+  // Alice: Google + local（可用 alice@gmail.com / password123 登入）
   // Bob: LINE 登入
-  // Carol: local（可用 carol@example.com / test1234 登入）
+  // Carol: local（可用 carol@example.com / password123 登入）
   // Dave: Google 登入
   // ==================
+  const passwordHash = await bcrypt.hash('password123', 10)
+
   await prisma.userIdentity.createMany({
     data: [
-      // Alice - Google
       {
         user_id: alice.id,
         provider: 'google',
         provider_user_id: 'google_alice_001',
         email: 'alice@gmail.com',
       },
-      // Alice - local（密碼：test1234）
       {
         user_id: alice.id,
         provider: 'local',
         provider_user_id: 'alice@gmail.com',
         email: 'alice@gmail.com',
-        password_hash: testHash,
+        password_hash: passwordHash,
       },
-      // Bob - LINE
       {
         user_id: bob.id,
         provider: 'line',
         provider_user_id: 'line_bob_002',
         email: 'bob@line.me',
       },
-      // Carol - local（密碼：test1234）
       {
         user_id: carol.id,
         provider: 'local',
         provider_user_id: 'carol@example.com',
         email: 'carol@example.com',
-        password_hash: testHash,
+        password_hash: passwordHash,
       },
-      // Dave - Google
       {
         user_id: dave.id,
         provider: 'google',
         provider_user_id: 'google_dave_004',
         email: 'dave@gmail.com',
       },
-    ]
+    ],
   })
 
   console.log('✅ UserIdentities 建立完成')
+  console.log('   可登入帳號：alice@gmail.com / carol@example.com  密碼：password123')
 
   // ==================
   // Friendships
   // Alice & Bob: 已成為好友
   // Carol -> Dave: 邀請中（pending）
-  // Dave -> Alice: 被拒絕
+  // Dave -> Alice: 已拒絕（rejected）
   // ==================
   await prisma.friendship.createMany({
     data: [
       { requester_id: alice.id, receiver_id: bob.id, status: 'accepted' },
       { requester_id: carol.id, receiver_id: dave.id, status: 'pending' },
       { requester_id: dave.id, receiver_id: alice.id, status: 'rejected' },
-    ]
+    ],
   })
 
   console.log('✅ Friendships 建立完成')
@@ -106,7 +106,6 @@ async function main() {
     return d
   }
 
-  // 1. Alice 建立，揪團中 → 可測「立即成團」「取消活動」
   await prisma.activity.create({
     data: {
       creator_id: alice.id,
@@ -118,7 +117,6 @@ async function main() {
       schedule: {
         create: {
           schedule_type: 'slot',
-
           window_start: future(4),
           window_end: future(4),
           confirmed_start: future(4, 17),
@@ -131,7 +129,6 @@ async function main() {
     },
   })
 
-  // 2. Alice 建立，已成團 → 測已成團狀態顯示
   await prisma.activity.create({
     data: {
       creator_id: alice.id,
@@ -143,7 +140,6 @@ async function main() {
       schedule: {
         create: {
           schedule_type: 'slot',
-
           window_start: future(7),
           window_end: future(7),
           confirmed_start: future(7, 8),
@@ -161,7 +157,6 @@ async function main() {
     },
   })
 
-  // 3. Bob 建立，揪團中，Alice 未加入 → 可測「報名參加」
   await prisma.activity.create({
     data: {
       creator_id: bob.id,
@@ -173,7 +168,6 @@ async function main() {
       schedule: {
         create: {
           schedule_type: 'slot',
-
           window_start: future(5),
           window_end: future(5),
           confirmed_start: future(5, 19),
@@ -186,7 +180,6 @@ async function main() {
     },
   })
 
-  // 4. Bob 建立，揪團中，Alice 已加入 → 可測「取消報名」
   await prisma.activity.create({
     data: {
       creator_id: bob.id,
@@ -198,7 +191,6 @@ async function main() {
       schedule: {
         create: {
           schedule_type: 'slot',
-
           window_start: future(3),
           window_end: future(3),
           confirmed_start: future(3, 15),
@@ -216,7 +208,6 @@ async function main() {
     },
   })
 
-  // 5. Bob 建立，已成團，Alice 已加入 → 測已成團 + 我有參加的狀態
   await prisma.activity.create({
     data: {
       creator_id: bob.id,
@@ -228,7 +219,6 @@ async function main() {
       schedule: {
         create: {
           schedule_type: 'slot',
-
           window_start: future(10),
           window_end: future(10),
           confirmed_start: future(10, 20),
@@ -267,14 +257,14 @@ async function main() {
         reference_type: 'user',
         is_read: false,
       },
-    ]
+    ],
   })
 
   console.log('✅ Notifications 建立完成')
   console.log('')
   console.log('🎉 假資料全部種入完成！')
   console.log('')
-  console.log('測試帳號（密碼統一：test1234）：')
+  console.log('測試帳號（密碼統一：password123）：')
   console.log('  alice@gmail.com   → Alice，與 Bob 互為好友')
   console.log('  carol@example.com → Carol，與 Dave pending')
 }
