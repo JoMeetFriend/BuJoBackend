@@ -1,7 +1,7 @@
 import prisma from '../lib/prisma.js'
 
 // 情境 a（日期時間都固定，單一候選時段、免投票）、情境 b（日期固定、候選時段複選投票）、
-// 情境 c（候選日期複選、統一時間）皆已支援，皆含到期判定與決選投票。情境 d（候選日期各自不同時段）之後再實作。
+// 情境 c（候選日期複選、統一時間）、情境 d（候選日期各自不同時段）皆已支援，皆含到期判定與決選投票。
 
 export async function createActivity(req, res) {
   const {
@@ -9,12 +9,14 @@ export async function createActivity(req, res) {
     startDate, startTime, endDate, endTime, allDay,
     singleDate, slots,
     candidateDates, uniformTime,
+    dateSlots,
     creatorSlotIndexes,
   } = req.body
   const creatorId = req.user.userId
   const isVotingB = Array.isArray(slots) && slots.length > 0
   const isVotingC = Array.isArray(candidateDates) && candidateDates.length > 0
-  const isVoting = isVotingB || isVotingC
+  const isVotingD = Array.isArray(dateSlots) && dateSlots.length > 0
+  const isVoting = isVotingB || isVotingC || isVotingD
 
   if (!title) {
     return res.status(400).json({ message: '活動名稱為必填' })
@@ -34,6 +36,11 @@ export async function createActivity(req, res) {
       return res.status(400).json({ message: '請設定統一時間' })
     }
     candidateSlotsData = buildCandidateDateSlots(candidateDates, uniformTime)
+  } else if (isVotingD) {
+    if (!dateSlots.every((s) => s.date && s.startTime && s.endTime)) {
+      return res.status(400).json({ message: '每個候選日期都需要設定時段' })
+    }
+    candidateSlotsData = buildDateSlots(dateSlots)
   } else {
     if (!startDate) {
       return res.status(400).json({ message: '開始日期為必填' })
@@ -662,6 +669,15 @@ function buildCandidateDateSlots(candidateDates, uniformTime) {
   return candidateDates.map((date) => ({
     slot_start: parseDateTime(date, uniformTime.startTime),
     slot_end: parseDateTime(date, uniformTime.endTime),
+    all_day: false,
+  }))
+}
+
+// 情境 d：每個候選日期各自帶自己的時段（date + startTime + endTime），逐筆轉成候選時段
+function buildDateSlots(dateSlots) {
+  return dateSlots.map(({ date, startTime, endTime }) => ({
+    slot_start: parseDateTime(date, startTime),
+    slot_end: parseDateTime(date, endTime),
     all_day: false,
   }))
 }
