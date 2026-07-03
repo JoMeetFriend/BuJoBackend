@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs'
 const prisma = new PrismaClient()
 
 async function main() {
-  console.log(' 開始種入假資料...')
+  console.log('🌱 開始種入假資料...')
 
   // ==================
   // Users (4 個使用者)
@@ -22,7 +22,7 @@ async function main() {
     data: { display_name: 'Dave', avatar_url: 'https://i.pravatar.cc/150?u=dave' },
   })
 
-  console.log(' Users 建立完成')
+  console.log('✅ Users 建立完成')
   console.log(`   Alice ID: ${alice.id}  後五碼: ${alice.id.slice(-5)}`)
   console.log(`   Bob   ID: ${bob.id}  後五碼: ${bob.id.slice(-5)}`)
   console.log(`   Carol ID: ${carol.id}  後五碼: ${carol.id.slice(-5)}`)
@@ -30,13 +30,15 @@ async function main() {
 
   // ==================
   // UserIdentities
-  // 密碼統一為 password123
+  // Alice: Google + local（可用 alice@gmail.com / password123 登入）
+  // Bob: LINE 登入
+  // Carol: local（可用 carol@example.com / password123 登入）
+  // Dave: Google 登入
   // ==================
   const passwordHash = await bcrypt.hash('password123', 10)
 
   await prisma.userIdentity.createMany({
     data: [
-      // Alice - Google + 一般登入（同帳號）
       {
         user_id: alice.id,
         provider: 'google',
@@ -50,14 +52,12 @@ async function main() {
         email: 'alice@gmail.com',
         password_hash: passwordHash,
       },
-      // Bob - LINE
       {
         user_id: bob.id,
         provider: 'line',
         provider_user_id: 'line_bob_002',
         email: 'bob@line.me',
       },
-      // Carol - 一般登入  email: carol@example.com / password123
       {
         user_id: carol.id,
         provider: 'local',
@@ -65,7 +65,6 @@ async function main() {
         email: 'carol@example.com',
         password_hash: passwordHash,
       },
-      // Dave - Google
       {
         user_id: dave.id,
         provider: 'google',
@@ -75,22 +74,169 @@ async function main() {
     ],
   })
 
-  console.log(' UserIdentities 建立完成')
+  console.log('✅ UserIdentities 建立完成')
   console.log('   可登入帳號：alice@gmail.com / carol@example.com  密碼：password123')
 
   // ==================
   // Friendships
   // Alice & Bob: 已成為好友
   // Carol -> Dave: 邀請中（pending）
+  // Dave -> Alice: 已拒絕（rejected）
   // ==================
   await prisma.friendship.createMany({
     data: [
       { requester_id: alice.id, receiver_id: bob.id, status: 'accepted' },
       { requester_id: carol.id, receiver_id: dave.id, status: 'pending' },
+      { requester_id: dave.id, receiver_id: alice.id, status: 'rejected' },
     ],
   })
 
-  console.log(' Friendships 建立完成')
+  console.log('✅ Friendships 建立完成')
+
+  // ==================
+  // Activities
+  // 以 Alice 登入為主要測試視角
+  // deadline_at 設為 confirmed_start 前一天同時間（預設規則）
+  // ==================
+  const now = new Date()
+  const future = (days, hour = 14) => {
+    const d = new Date(now)
+    d.setDate(d.getDate() + days)
+    d.setHours(hour, 0, 0, 0)
+    return d
+  }
+
+  await prisma.activity.create({
+    data: {
+      creator_id: alice.id,
+      title: 'Alice 的烤肉趴',
+      description: '自備食材，飲料共享！歡迎揪人來。',
+      location: '大安森林公園',
+      max_participants: 8,
+      status: 'recruiting',
+      schedule: {
+        create: {
+          schedule_type: 'slot',
+          window_start: future(4),
+          window_end: future(4),
+          confirmed_start: future(4, 17),
+          confirmed_end: future(4, 21),
+          deadline_at: future(3, 17),
+        },
+      },
+      participants: { create: { user_id: alice.id } },
+      chat: { create: { name: 'Alice 的烤肉趴' } },
+    },
+  })
+
+  await prisma.activity.create({
+    data: {
+      creator_id: alice.id,
+      title: 'Alice 的爬山',
+      description: '輕鬆路線，新手也可以！',
+      location: '象山步道',
+      max_participants: 10,
+      status: 'confirmed',
+      schedule: {
+        create: {
+          schedule_type: 'slot',
+          window_start: future(7),
+          window_end: future(7),
+          confirmed_start: future(7, 8),
+          confirmed_end: future(7, 12),
+          deadline_at: future(6, 8),
+        },
+      },
+      participants: {
+        create: [
+          { user_id: alice.id },
+          { user_id: bob.id },
+        ],
+      },
+      chat: { create: { name: 'Alice 的爬山' } },
+    },
+  })
+
+  await prisma.activity.create({
+    data: {
+      creator_id: bob.id,
+      title: 'Bob 的桌遊之夜',
+      description: '卡坦島、密室逃脫等，歡迎帶自己喜歡的遊戲！',
+      location: '信義區桌遊店',
+      max_participants: 6,
+      status: 'recruiting',
+      schedule: {
+        create: {
+          schedule_type: 'slot',
+          window_start: future(5),
+          window_end: future(5),
+          confirmed_start: future(5, 19),
+          confirmed_end: future(5, 22),
+          deadline_at: future(4, 19),
+        },
+      },
+      participants: { create: { user_id: bob.id } },
+      chat: { create: { name: 'Bob 的桌遊之夜' } },
+    },
+  })
+
+  await prisma.activity.create({
+    data: {
+      creator_id: bob.id,
+      title: 'Bob 的下午茶',
+      description: '來聊聊最近在幹嘛，輕鬆聚聚。',
+      location: '大安區某咖啡廳',
+      max_participants: 5,
+      status: 'recruiting',
+      schedule: {
+        create: {
+          schedule_type: 'slot',
+          window_start: future(3),
+          window_end: future(3),
+          confirmed_start: future(3, 15),
+          confirmed_end: future(3, 17),
+          deadline_at: future(2, 15),
+        },
+      },
+      participants: {
+        create: [
+          { user_id: bob.id },
+          { user_id: alice.id },
+        ],
+      },
+      chat: { create: { name: 'Bob 的下午茶' } },
+    },
+  })
+
+  await prisma.activity.create({
+    data: {
+      creator_id: bob.id,
+      title: 'Bob 的看電影',
+      description: '約好要去看的那部！',
+      location: '西門町某電影院',
+      max_participants: 4,
+      status: 'confirmed',
+      schedule: {
+        create: {
+          schedule_type: 'slot',
+          window_start: future(10),
+          window_end: future(10),
+          confirmed_start: future(10, 20),
+          confirmed_end: future(10, 22),
+          deadline_at: future(9, 20),
+        },
+      },
+      participants: {
+        create: [
+          { user_id: bob.id },
+          { user_id: alice.id },
+        ],
+      },
+      chat: { create: { name: 'Bob 的看電影' } },
+    },
+  })
+
+  console.log('✅ Activities 建立完成')
 
   // ==================
   // Notifications
@@ -114,8 +260,13 @@ async function main() {
     ],
   })
 
-  console.log(' Notifications 建立完成')
-  console.log(' 假資料全部種入完成！')
+  console.log('✅ Notifications 建立完成')
+  console.log('')
+  console.log('🎉 假資料全部種入完成！')
+  console.log('')
+  console.log('測試帳號（密碼統一：password123）：')
+  console.log('  alice@gmail.com   → Alice，與 Bob 互為好友')
+  console.log('  carol@example.com → Carol，與 Dave pending')
 }
 
 main()

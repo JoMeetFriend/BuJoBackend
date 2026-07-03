@@ -88,9 +88,9 @@ model Activity {
   id               String         @id @default(uuid())
   creator_id       String
   title            String
-  description      String         
-  location         String
-  max_participants Int
+  description      String?
+  location         String?
+  max_participants Int?
   cover_image_url  String?
   status           ActivityStatus @default(draft)
   pre_notify_hours Int            @default(24)

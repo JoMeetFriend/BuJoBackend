@@ -6,7 +6,7 @@ import { signToken } from '../lib/jwt.js'
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID)
 
 export async function googleLink(req, res) {
-  const { credential } = req.body
+  const credential = req.body.credential || req.body.token
   const currentUserId = req.user.userId
 
   if (!credential) return res.status(400).json({ error: '缺少 Google ID Token' })
@@ -17,7 +17,7 @@ export async function googleLink(req, res) {
       audience: process.env.GOOGLE_CLIENT_ID,
     })
     const payload = ticket.getPayload()
-    if (!payload?.email || !payload.email_verified) return res.status(401).json({ error: '無法取得使用者資訊' })
+    if (!payload?.email || payload.email_verified === false) return res.status(401).json({ error: '無法取得使用者資訊' })
 
     const existing = await prisma.userIdentity.findUnique({
       where: {
@@ -46,7 +46,7 @@ export async function googleLink(req, res) {
 }
 
 export async function googleLogin(req, res) {
-  const { credential } = req.body
+  const credential = req.body.credential || req.body.token
 
   if (!credential) {
     return res.status(400).json({ error: '缺少 Google ID Token' })
@@ -59,7 +59,7 @@ export async function googleLogin(req, res) {
     })
     const payload = ticket.getPayload()
 
-    if (!payload?.email || !payload.email_verified) {
+    if (!payload?.email || payload.email_verified === false) {
       return res.status(401).json({ error: '無法取得使用者資訊' })
     }
 

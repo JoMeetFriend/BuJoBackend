@@ -1,7 +1,10 @@
 import prisma from "../lib/prisma.js";
-
-const FRIEND_REQUEST_CREATED = "friend_request_created";
-const FRIENDSHIP_REFERENCE = "friendship";
+import {
+  createFriendRequestAcceptedNotification,
+  createFriendRequestNotification,
+  sendFriendRequestAcceptedLineNotification,
+  sendFriendRequestCreatedLineNotification,
+} from "../services/notificationService.js";
 
 export async function requestFriendship(req, res) {
   const requesterId = req.user.userId;
@@ -67,17 +70,21 @@ export async function requestFriendship(req, res) {
           },
         });
 
-    await tx.notification.create({
-      data: {
-        user_id: receiverId,
-        type: FRIEND_REQUEST_CREATED,
-        reference_id: nextFriendship.id,
-        reference_type: FRIENDSHIP_REFERENCE,
-        is_read: false,
+    await createFriendRequestNotification(
+      {
+        receiverId,
+        friendshipId: nextFriendship.id,
       },
-    });
+      tx,
+      { deliverLine: false },
+    );
 
     return nextFriendship;
+  });
+
+  await sendFriendRequestCreatedLineNotification({
+    receiverId,
+    friendshipId: friendship.id,
   });
 
   return res.status(201).json({
@@ -87,6 +94,96 @@ export async function requestFriendship(req, res) {
       requester_id: friendship.requester_id,
       receiver_id: friendship.receiver_id,
       status: friendship.status,
+    },
+  });
+}
+
+export async function acceptFriendship(req, res) {
+  const userId = req.user.userId;
+  const { id } = req.params;
+
+  const friendship = await prisma.friendship.findUnique({
+    where: { id },
+  });
+
+  if (!friendship) {
+    return res.status(404).json({ message: "找不到好友邀請" });
+  }
+
+  if (friendship.receiver_id !== userId) {
+    return res.status(403).json({ message: "只有被邀請者可以接受好友邀請" });
+  }
+
+  if (friendship.status !== "pending") {
+    return res.status(400).json({ message: "此好友邀請無法接受" });
+  }
+
+  const updatedFriendship = await prisma.$transaction(async (tx) => {
+    const nextFriendship = await tx.friendship.update({
+      where: { id },
+      data: { status: "accepted" },
+    });
+
+    await createFriendRequestAcceptedNotification(
+      {
+        requesterId: friendship.requester_id,
+        friendshipId: friendship.id,
+      },
+      tx,
+      { deliverLine: false },
+    );
+
+    return nextFriendship;
+  });
+
+  await sendFriendRequestAcceptedLineNotification({
+    requesterId: friendship.requester_id,
+    friendshipId: friendship.id,
+  });
+
+  return res.status(200).json({
+    message: "已接受好友邀請",
+    friendship: {
+      id: updatedFriendship.id,
+      requester_id: updatedFriendship.requester_id,
+      receiver_id: updatedFriendship.receiver_id,
+      status: updatedFriendship.status,
+    },
+  });
+}
+
+export async function rejectFriendship(req, res) {
+  const userId = req.user.userId;
+  const { id } = req.params;
+
+  const friendship = await prisma.friendship.findUnique({
+    where: { id },
+  });
+
+  if (!friendship) {
+    return res.status(404).json({ message: "找不到好友邀請" });
+  }
+
+  if (friendship.receiver_id !== userId) {
+    return res.status(403).json({ message: "只有被邀請者可以拒絕好友邀請" });
+  }
+
+  if (friendship.status !== "pending") {
+    return res.status(400).json({ message: "此好友邀請無法拒絕" });
+  }
+
+  const updatedFriendship = await prisma.friendship.update({
+    where: { id },
+    data: { status: "rejected" },
+  });
+
+  return res.status(200).json({
+    message: "已拒絕好友邀請",
+    friendship: {
+      id: updatedFriendship.id,
+      requester_id: updatedFriendship.requester_id,
+      receiver_id: updatedFriendship.receiver_id,
+      status: updatedFriendship.status,
     },
   });
 }
