@@ -252,7 +252,7 @@ const me = await fetch("http://localhost:3000/api/auth/me", {
 
 ### POST `/api/friendships/request` — 發送好友邀請並通知對方 🔒
 
-> 需要登入（cookie 中有效的 `token`）。A 邀請 B 時，會建立 `pending` friendship，並建立給 B 的 `friend_request_created` 站內通知。
+> 需要登入（cookie 中有效的 `token`）。A 邀請 B 時，會建立 `pending` friendship，並建立給 B 的 `friend_request_created` 站內通知。若 B 有 LINE Login identity、LINE 通知偏好未關閉，且 `LINE_PUSH_ENABLED=true`，後端會用 LINE Official Account 的 Messaging API 嘗試推播同一則通知。
 
 **Request Body**
 
@@ -285,7 +285,7 @@ const me = await fetch("http://localhost:3000/api/auth/me", {
 
 ### POST `/api/friendships/:id/accept` — 接受好友邀請並通知邀請者 🔒
 
-> 需要登入（cookie 中有效的 `token`）。只有被邀請者可以接受。B 接受 A 的邀請後，friendship 狀態會改成 `accepted`，並建立給 A 的 `friend_request_accepted` 站內通知。
+> 需要登入（cookie 中有效的 `token`）。只有被邀請者可以接受。B 接受 A 的邀請後，friendship 狀態會改成 `accepted`，並建立給 A 的 `friend_request_accepted` 站內通知。若 A 有 LINE Login identity、LINE 通知偏好未關閉，且 `LINE_PUSH_ENABLED=true`，後端會用 LINE Official Account 的 Messaging API 嘗試推播同一則通知。
 
 **Response**
 
@@ -407,6 +407,16 @@ const me = await fetch("http://localhost:3000/api/auth/me", {
 | `friend_request_created`  | `friend`   | `{requesterName} 向你發送好友邀請`        | pending 時可接受/拒絕 |
 | `friend_request_accepted` | `friend`   | `{receiverName} 接受了你的好友邀請`       | 無                   |
 | `activity_created`        | `activity` | `{creatorName} 建立了新活動：{activity}`  | 無                   |
+
+**LINE 推播**
+
+- 目前 LINE 推播沒有新增 API；它是建立站內通知後的 best-effort side effect。
+- LINE Login identity 是 v1 binding source：後端用 `user_identities.provider = "line"` 的 `provider_user_id` 當 Messaging API `to`。
+- Messaging API channel access token 只用於 LINE Official Account 推播，設定在 `LINE_MESSAGING_CHANNEL_ACCESS_TOKEN`。
+- LINE Login channel 與 Messaging API channel 必須在 same provider，否則 LINE Login 拿到的 user id 不一定能用於官方帳號推播。
+- 本地與測試預設 `LINE_PUSH_ENABLED=false`；只有正式整合測試或部署時才改成 true。
+- 後端不會自動建立 LINE Official Account、provider、Messaging API channel 或 token；請依 `docs/line-official-account-setup.md` 手動設定，也要讓使用者透過 QR code、add friend 連結或 `bot_prompt` 加入官方帳號。
+- `src/services/lineService.js` 只處理 LINE Login/OAuth；官方帳號推播由 `src/services/lineMessagingService.js` 呼叫 Messaging API。
 
 ### PATCH `/api/notifications/:id/read` — 標記單筆通知已讀 🔒
 

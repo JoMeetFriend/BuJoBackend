@@ -40,6 +40,7 @@ export async function createLineAuthorizationUrl() {
   url.searchParams.set("redirect_uri", callbackUrl);
   url.searchParams.set("scope", "profile openid");
   url.searchParams.set("state", state);
+  url.searchParams.set("bot_prompt", "normal");
 
   return url;
 }

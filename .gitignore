@@ -4,3 +4,4 @@ dist/
 npm-debug.log*
 .spectra/
 openspec/.vector-search.db*
+

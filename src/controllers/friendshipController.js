@@ -2,6 +2,8 @@ import prisma from "../lib/prisma.js";
 import {
   createFriendRequestAcceptedNotification,
   createFriendRequestNotification,
+  sendFriendRequestAcceptedLineNotification,
+  sendFriendRequestCreatedLineNotification,
 } from "../services/notificationService.js";
 
 export async function requestFriendship(req, res) {
@@ -74,9 +76,15 @@ export async function requestFriendship(req, res) {
         friendshipId: nextFriendship.id,
       },
       tx,
+      { deliverLine: false },
     );
 
     return nextFriendship;
+  });
+
+  await sendFriendRequestCreatedLineNotification({
+    receiverId,
+    friendshipId: friendship.id,
   });
 
   return res.status(201).json({
@@ -122,9 +130,15 @@ export async function acceptFriendship(req, res) {
         friendshipId: friendship.id,
       },
       tx,
+      { deliverLine: false },
     );
 
     return nextFriendship;
+  });
+
+  await sendFriendRequestAcceptedLineNotification({
+    requesterId: friendship.requester_id,
+    friendshipId: friendship.id,
   });
 
   return res.status(200).json({
