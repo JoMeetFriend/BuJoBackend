@@ -78,13 +78,7 @@ export async function login(req, res) {
     const token = signToken(identity.user.id)
     res.cookie(COOKIE_NAME, token, AUTH_COOKIE_OPTIONS)
 
-    return res.status(200).json({
-      user: {
-        id: identity.user.id,
-        display_name: identity.user.display_name,
-        avatar_url: identity.user.avatar_url,
-      },
-    })
+    return res.status(200).json({ user: { id: identity.user.id, display_name: identity.user.display_name, avatar_url: identity.user.avatar_url } })
   } catch (error) {
     console.error('login 錯誤：', error)
     return res.status(500).json({ message: '伺服器錯誤' })

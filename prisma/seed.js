@@ -58,6 +58,7 @@ async function main() {
         provider_user_id: 'line_bob_002',
         email: 'bob@line.me',
       },
+      // Carol - 一般登入  email: carol@example.com / password123
       {
         user_id: carol.id,
         provider: 'local',
@@ -112,41 +113,26 @@ async function main() {
       title: 'Alice 的烤肉趴',
       description: '自備食材，飲料共享！歡迎揪人來。',
       location: '大安森林公園',
-      max_participants: 8,
+      participant_target: 8,
       status: 'recruiting',
-      schedule: {
-        create: {
-          schedule_type: 'slot',
-          window_start: future(4),
-          window_end: future(4),
-          confirmed_start: future(4, 17),
-          confirmed_end: future(4, 21),
-          deadline_at: future(3, 17),
-        },
-      },
+      schedule: { create: { requires_voting: false, deadline_at: future(3, 17) } },
+      candidateSlots: { create: { slot_start: future(4, 17), slot_end: future(4, 21) } },
       participants: { create: { user_id: alice.id } },
       chat: { create: { name: 'Alice 的烤肉趴' } },
     },
   })
 
-  await prisma.activity.create({
+  // 2. Alice 建立，已成團 → 測已成團狀態顯示
+  const aliceHike = await prisma.activity.create({
     data: {
       creator_id: alice.id,
       title: 'Alice 的爬山',
       description: '輕鬆路線，新手也可以！',
       location: '象山步道',
-      max_participants: 10,
+      participant_target: 10,
       status: 'confirmed',
-      schedule: {
-        create: {
-          schedule_type: 'slot',
-          window_start: future(7),
-          window_end: future(7),
-          confirmed_start: future(7, 8),
-          confirmed_end: future(7, 12),
-          deadline_at: future(6, 8),
-        },
-      },
+      schedule: { create: { requires_voting: false, deadline_at: future(6, 8) } },
+      candidateSlots: { create: { slot_start: future(7, 8), slot_end: future(7, 12) } },
       participants: {
         create: [
           { user_id: alice.id },
@@ -155,6 +141,11 @@ async function main() {
       },
       chat: { create: { name: 'Alice 的爬山' } },
     },
+    include: { candidateSlots: true },
+  })
+  await prisma.activitySchedule.update({
+    where: { activity_id: aliceHike.id },
+    data: { confirmed_slot_id: aliceHike.candidateSlots[0].id },
   })
 
   await prisma.activity.create({
@@ -163,18 +154,10 @@ async function main() {
       title: 'Bob 的桌遊之夜',
       description: '卡坦島、密室逃脫等，歡迎帶自己喜歡的遊戲！',
       location: '信義區桌遊店',
-      max_participants: 6,
+      participant_target: 6,
       status: 'recruiting',
-      schedule: {
-        create: {
-          schedule_type: 'slot',
-          window_start: future(5),
-          window_end: future(5),
-          confirmed_start: future(5, 19),
-          confirmed_end: future(5, 22),
-          deadline_at: future(4, 19),
-        },
-      },
+      schedule: { create: { requires_voting: false, deadline_at: future(4, 19) } },
+      candidateSlots: { create: { slot_start: future(5, 19), slot_end: future(5, 22) } },
       participants: { create: { user_id: bob.id } },
       chat: { create: { name: 'Bob 的桌遊之夜' } },
     },
@@ -186,18 +169,10 @@ async function main() {
       title: 'Bob 的下午茶',
       description: '來聊聊最近在幹嘛，輕鬆聚聚。',
       location: '大安區某咖啡廳',
-      max_participants: 5,
+      participant_target: 5,
       status: 'recruiting',
-      schedule: {
-        create: {
-          schedule_type: 'slot',
-          window_start: future(3),
-          window_end: future(3),
-          confirmed_start: future(3, 15),
-          confirmed_end: future(3, 17),
-          deadline_at: future(2, 15),
-        },
-      },
+      schedule: { create: { requires_voting: false, deadline_at: future(2, 15) } },
+      candidateSlots: { create: { slot_start: future(3, 15), slot_end: future(3, 17) } },
       participants: {
         create: [
           { user_id: bob.id },
@@ -208,24 +183,17 @@ async function main() {
     },
   })
 
-  await prisma.activity.create({
+  // 5. Bob 建立，已成團，Alice 已加入 → 測已成團 + 我有參加的狀態
+  const bobMovie = await prisma.activity.create({
     data: {
       creator_id: bob.id,
       title: 'Bob 的看電影',
       description: '約好要去看的那部！',
       location: '西門町某電影院',
-      max_participants: 4,
+      participant_target: 4,
       status: 'confirmed',
-      schedule: {
-        create: {
-          schedule_type: 'slot',
-          window_start: future(10),
-          window_end: future(10),
-          confirmed_start: future(10, 20),
-          confirmed_end: future(10, 22),
-          deadline_at: future(9, 20),
-        },
-      },
+      schedule: { create: { requires_voting: false, deadline_at: future(9, 20) } },
+      candidateSlots: { create: { slot_start: future(10, 20), slot_end: future(10, 22) } },
       participants: {
         create: [
           { user_id: bob.id },
@@ -234,6 +202,11 @@ async function main() {
       },
       chat: { create: { name: 'Bob 的看電影' } },
     },
+    include: { candidateSlots: true },
+  })
+  await prisma.activitySchedule.update({
+    where: { activity_id: bobMovie.id },
+    data: { confirmed_slot_id: bobMovie.candidateSlots[0].id },
   })
 
   console.log('✅ Activities 建立完成')

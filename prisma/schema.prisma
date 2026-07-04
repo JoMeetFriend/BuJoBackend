@@ -11,8 +11,8 @@ model User {
   id         String   @id @default(uuid())
   display_name String
   avatar_url String?
-  created_at DateTime @default(now())
-  updated_at DateTime @updatedAt
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @updatedAt @db.Timestamptz
 
   identities               UserIdentity[]
   sentRequests             Friendship[]             @relation("Requester")
@@ -25,7 +25,7 @@ model User {
   sentInvitations          ActivityInvitation[]   @relation("InvitationSent")
   receivedInvitations      ActivityInvitation[]   @relation("InvitationReceived")
   activityParticipants     ActivityParticipant[]
-  activityVotes            ActivityVote[]
+  activityTiebreakVotes    ActivityTiebreakVote[]
 
   @@map("users")
 }
@@ -37,7 +37,7 @@ model UserIdentity {
   provider_user_id String?
   email            String?
   password_hash    String?
-  created_at       DateTime @default(now())
+  created_at       DateTime @default(now()) @db.Timestamptz
 
   user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
@@ -51,8 +51,8 @@ model Friendship {
   requester_id String
   receiver_id  String
   status       String   @default("pending")
-  created_at   DateTime @default(now())
-  updated_at   DateTime @updatedAt
+  created_at   DateTime @default(now()) @db.Timestamptz
+  updated_at   DateTime @updatedAt @db.Timestamptz
 
   requester User @relation("Requester", fields: [requester_id], references: [id], onDelete: Cascade)
   receiver  User @relation("Receiver", fields: [receiver_id], references: [id], onDelete: Cascade)
@@ -68,7 +68,7 @@ model Notification {
   reference_id   String?
   reference_type String?
   is_read        Boolean  @default(false)
-  created_at     DateTime @default(now())
+  created_at     DateTime @default(now()) @db.Timestamptz
 
   user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
@@ -85,26 +85,27 @@ enum ActivityStatus {
 }
 
 model Activity {
-  id               String         @id @default(uuid())
-  creator_id       String
-  title            String
-  description      String?
-  location         String?
-  max_participants Int?
-  cover_image_url  String?
-  status           ActivityStatus @default(draft)
-  pre_notify_hours Int            @default(24)
-  created_at       DateTime       @default(now())
-  updated_at       DateTime       @updatedAt
+  id                 String         @id @default(uuid())
+  creator_id         String
+  title              String
+  description        String?
+  location           String?
+  category           String?
+  participant_target Int?
+  cover_image_url    String?
+  status             ActivityStatus @default(draft)
+  pre_notify_hours   Int            @default(24)
+  created_at         DateTime       @default(now()) @db.Timestamptz
+  updated_at         DateTime       @updatedAt @db.Timestamptz
 
-  creator                User                   @relation(fields: [creator_id], references: [id], onDelete: Cascade)
-  notificationJobs       NotificationJob[]
-  schedule               ActivitySchedule?
-  availabilities         ActivityAvailability[]
-  invitations            ActivityInvitation[]
-  participants           ActivityParticipant[]
-  votes                  ActivityVote[]
-  chat                   ActivityChat?
+  creator          User                   @relation(fields: [creator_id], references: [id], onDelete: Cascade)
+  notificationJobs NotificationJob[]
+  schedule         ActivitySchedule?
+  candidateSlots   ActivityCandidateSlot[]
+  invitations      ActivityInvitation[]
+  participants     ActivityParticipant[]
+  tiebreakVotes    ActivityTiebreakVote[]
+  chat             ActivityChat?
 
   @@map("activities")
 }
@@ -113,26 +114,11 @@ model ActivityChat {
   id          String   @id @default(uuid())
   activity_id String   @unique
   name        String
-  created_at  DateTime @default(now())
+  created_at  DateTime @default(now()) @db.Timestamptz
 
   activity Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
 
   @@map("activity_chats")
-}
-
-model ActivityVote {
-  id          String   @id @default(uuid())
-  activity_id String
-  user_id     String
-  slot_start  DateTime
-  slot_end    DateTime
-  created_at  DateTime @default(now())
-
-  activity Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
-  user     User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
-
-  @@unique([activity_id, user_id])
-  @@map("activity_votes")
 }
 
 enum ActivityParticipantStatus {
@@ -146,7 +132,7 @@ model ActivityParticipant {
   activity_id String
   user_id     String
   status      ActivityParticipantStatus @default(joined)
-  joined_at   DateTime                  @default(now())
+  joined_at   DateTime                  @default(now()) @db.Timestamptz
 
   activity Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
   user     User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
@@ -168,7 +154,7 @@ model ActivityInvitation {
   invitee_id   String
   invite_token String?                  @unique
   status       ActivityInvitationStatus @default(pending)
-  created_at   DateTime                 @default(now())
+  created_at   DateTime                 @default(now()) @db.Timestamptz
 
   activity Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
   inviter  User     @relation("InvitationSent", fields: [inviter_id], references: [id], onDelete: Cascade)
@@ -177,41 +163,61 @@ model ActivityInvitation {
   @@map("activity_invitations")
 }
 
-model ActivityAvailability {
+model ActivitySchedule {
+  id                String   @id @default(uuid())
+  activity_id       String   @unique
+  requires_voting   Boolean  @default(false)
+  deadline_at       DateTime @db.Timestamptz
+  confirmed_slot_id String?  @unique
+
+  activity      Activity              @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+  confirmedSlot ActivityCandidateSlot? @relation("ConfirmedSlot", fields: [confirmed_slot_id], references: [id])
+
+  @@map("activity_schedules")
+}
+
+model ActivityCandidateSlot {
   id          String   @id @default(uuid())
   activity_id String
-  user_id     String
-  slot_start  DateTime
-  slot_end    DateTime
-  created_at  DateTime @default(now())
+  slot_start  DateTime @db.Timestamptz
+  slot_end    DateTime @db.Timestamptz
+  all_day     Boolean  @default(false)
+  created_at  DateTime @default(now()) @db.Timestamptz
 
-  activity Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
-  user     User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+  activity       Activity                @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+  availabilities ActivityAvailability[]
+  tiebreakVotes  ActivityTiebreakVote[]
+  confirmedFor   ActivitySchedule?       @relation("ConfirmedSlot")
 
-  @@unique([activity_id, user_id, slot_start])
+  @@map("activity_candidate_slots")
+}
+
+model ActivityAvailability {
+  id                String   @id @default(uuid())
+  candidate_slot_id String
+  user_id           String
+  created_at        DateTime @default(now()) @db.Timestamptz
+
+  candidateSlot ActivityCandidateSlot @relation(fields: [candidate_slot_id], references: [id], onDelete: Cascade)
+  user          User                  @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@unique([candidate_slot_id, user_id])
   @@map("activity_availabilities")
 }
 
-enum ActivityScheduleType {
-  slot
-  range
-}
+model ActivityTiebreakVote {
+  id                String   @id @default(uuid())
+  activity_id       String
+  candidate_slot_id String
+  user_id           String
+  created_at        DateTime @default(now()) @db.Timestamptz
 
-model ActivitySchedule {
-  id                String               @id @default(uuid())
-  activity_id       String               @unique
-  schedule_type     ActivityScheduleType
-  window_start      DateTime             @db.Date
-  window_end        DateTime             @db.Date
-  slot_duration_min Int?                 @default(60)
-  deadline_at       DateTime
-  vote_deadline_at  DateTime?
-  confirmed_start   DateTime?
-  confirmed_end     DateTime?
+  activity      Activity              @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+  candidateSlot ActivityCandidateSlot @relation(fields: [candidate_slot_id], references: [id], onDelete: Cascade)
+  user          User                  @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
-  activity Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
-
-  @@map("activity_schedules")
+  @@unique([activity_id, user_id])
+  @@map("activity_tiebreak_votes")
 }
 
 enum NotificationJobStatus {
@@ -226,10 +232,10 @@ model NotificationJob {
   activity_id  String
   type         String
   channel      String
-  scheduled_at DateTime
+  scheduled_at DateTime              @db.Timestamptz
   status       NotificationJobStatus @default(pending)
-  sent_at      DateTime?
-  created_at   DateTime              @default(now())
+  sent_at      DateTime?             @db.Timestamptz
+  created_at   DateTime              @default(now()) @db.Timestamptz
 
   user     User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
   activity Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
@@ -244,7 +250,7 @@ model NotificationPreference {
   in_app     Boolean  @default(true)
   line       Boolean  @default(true)
   email      Boolean  @default(true)
-  updated_at DateTime @updatedAt
+  updated_at DateTime @updatedAt @db.Timestamptz
 
   user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
@@ -256,9 +262,9 @@ model OAuthAttempt {
   id          String    @id @default(uuid())
   state_hash  String    @unique
   user_id     String?
-  expires_at  DateTime
-  consumed_at DateTime?
-  created_at  DateTime  @default(now())
+  expires_at  DateTime  @db.Timestamptz
+  consumed_at DateTime? @db.Timestamptz
+  created_at  DateTime  @default(now()) @db.Timestamptz
 
   @@index([expires_at])
   @@map("oauth_attempts")
