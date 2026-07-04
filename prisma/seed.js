@@ -1,5 +1,6 @@
 import { PrismaClient } from '@prisma/client'
 import bcrypt from 'bcryptjs'
+
 const prisma = new PrismaClient()
 
 async function main() {
@@ -21,7 +22,7 @@ async function main() {
     data: { display_name: 'Dave', avatar_url: 'https://i.pravatar.cc/150?u=dave' },
   })
 
-  console.log(' Users 建立完成')
+  console.log('✅ Users 建立完成')
   console.log(`   Alice ID: ${alice.id}  後五碼: ${alice.id.slice(-5)}`)
   console.log(`   Bob   ID: ${bob.id}  後五碼: ${bob.id.slice(-5)}`)
   console.log(`   Carol ID: ${carol.id}  後五碼: ${carol.id.slice(-5)}`)
@@ -29,13 +30,15 @@ async function main() {
 
   // ==================
   // UserIdentities
-  // 密碼統一為 password123
+  // Alice: Google + local（可用 alice@gmail.com / password123 登入）
+  // Bob: LINE 登入
+  // Carol: local（可用 carol@example.com / password123 登入）
+  // Dave: Google 登入
   // ==================
   const passwordHash = await bcrypt.hash('password123', 10)
 
   await prisma.userIdentity.createMany({
     data: [
-      // Alice - Google + 一般登入（同帳號）
       {
         user_id: alice.id,
         provider: 'google',
@@ -49,7 +52,6 @@ async function main() {
         email: 'alice@gmail.com',
         password_hash: passwordHash,
       },
-      // Bob - LINE
       {
         user_id: bob.id,
         provider: 'line',
@@ -64,7 +66,6 @@ async function main() {
         email: 'carol@example.com',
         password_hash: passwordHash,
       },
-      // Dave - Google
       {
         user_id: dave.id,
         provider: 'google',
@@ -74,20 +75,21 @@ async function main() {
     ],
   })
 
-  console.log(' UserIdentities 建立完成')
+  console.log('✅ UserIdentities 建立完成')
   console.log('   可登入帳號：alice@gmail.com / carol@example.com  密碼：password123')
 
   // ==================
   // Friendships
   // Alice & Bob: 已成為好友
   // Carol -> Dave: 邀請中（pending）
+  // Dave -> Alice: 已拒絕（rejected）
   // ==================
   await prisma.friendship.createMany({
     data: [
       { requester_id: alice.id, receiver_id: bob.id, status: 'accepted' },
       { requester_id: carol.id, receiver_id: dave.id, status: 'pending' },
       { requester_id: dave.id, receiver_id: alice.id, status: 'rejected' },
-    ]
+    ],
   })
 
   console.log('✅ Friendships 建立完成')
@@ -105,7 +107,6 @@ async function main() {
     return d
   }
 
-  // 1. Alice 建立，揪團中 → 可測「立即成團」「取消活動」
   await prisma.activity.create({
     data: {
       creator_id: alice.id,
@@ -147,7 +148,6 @@ async function main() {
     data: { confirmed_slot_id: aliceHike.candidateSlots[0].id },
   })
 
-  // 3. Bob 建立，揪團中，Alice 未加入 → 可測「報名參加」
   await prisma.activity.create({
     data: {
       creator_id: bob.id,
@@ -163,7 +163,6 @@ async function main() {
     },
   })
 
-  // 4. Bob 建立，揪團中，Alice 已加入 → 可測「取消報名」
   await prisma.activity.create({
     data: {
       creator_id: bob.id,
@@ -231,7 +230,7 @@ async function main() {
         reference_type: 'user',
         is_read: false,
       },
-    ]
+    ],
   })
 
   console.log('✅ Notifications 建立完成')

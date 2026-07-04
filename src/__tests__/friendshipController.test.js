@@ -4,6 +4,7 @@ jest.unstable_mockModule('../lib/prisma.js', () => {
   const prisma = {
     user: { findUnique: jest.fn() },
     friendship: {
+      findUnique: jest.fn(),
       findFirst: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
@@ -15,7 +16,11 @@ jest.unstable_mockModule('../lib/prisma.js', () => {
   return { default: prisma }
 })
 
-const { requestFriendship } = await import('../controllers/friendshipController.js')
+const {
+  acceptFriendship,
+  rejectFriendship,
+  requestFriendship,
+} = await import('../controllers/friendshipController.js')
 const { default: friendshipRoutes } = await import('../routes/friendships.js')
 const { default: prisma } = await import('../lib/prisma.js')
 
@@ -41,6 +46,22 @@ describe('POST /api/friendships/request route', () => {
     expect(requestRoute).toBeDefined()
     expect(requestRoute.route.methods.post).toBe(true)
     expect(requestRoute.route.stack[0].handle.name).toBe('authenticate')
+  })
+
+  it('使用 authenticate middleware 保護接受好友邀請 API', () => {
+    const acceptRoute = friendshipRoutes.stack.find((layer) => layer.route?.path === '/:id/accept')
+
+    expect(acceptRoute).toBeDefined()
+    expect(acceptRoute.route.methods.post).toBe(true)
+    expect(acceptRoute.route.stack[0].handle.name).toBe('authenticate')
+  })
+
+  it('使用 authenticate middleware 保護拒絕好友邀請 API', () => {
+    const rejectRoute = friendshipRoutes.stack.find((layer) => layer.route?.path === '/:id/reject')
+
+    expect(rejectRoute).toBeDefined()
+    expect(rejectRoute.route.methods.post).toBe(true)
+    expect(rejectRoute.route.stack[0].handle.name).toBe('authenticate')
   })
 })
 
@@ -200,5 +221,159 @@ describe('requestFriendship', () => {
       },
     })
     expect(res.status).toHaveBeenCalledWith(201)
+  })
+})
+
+describe('acceptFriendship', () => {
+  it('找不到好友邀請回傳 404', async () => {
+    const res = makeRes()
+    prisma.friendship.findUnique.mockResolvedValue(null)
+
+    await acceptFriendship({ params: { id: 'friendship-1' }, user: { userId: 'user-b' } }, res)
+
+    expect(res.status).toHaveBeenCalledWith(404)
+    expect(res.json).toHaveBeenCalledWith({ message: '找不到好友邀請' })
+  })
+
+  it('只有被邀請者可以接受好友邀請', async () => {
+    const res = makeRes()
+    prisma.friendship.findUnique.mockResolvedValue({
+      id: 'friendship-1',
+      requester_id: 'user-a',
+      receiver_id: 'user-b',
+      status: 'pending',
+    })
+
+    await acceptFriendship({ params: { id: 'friendship-1' }, user: { userId: 'user-c' } }, res)
+
+    expect(res.status).toHaveBeenCalledWith(403)
+    expect(res.json).toHaveBeenCalledWith({ message: '只有被邀請者可以接受好友邀請' })
+  })
+
+  it('非 pending 好友邀請不能接受', async () => {
+    const res = makeRes()
+    prisma.friendship.findUnique.mockResolvedValue({
+      id: 'friendship-1',
+      requester_id: 'user-a',
+      receiver_id: 'user-b',
+      status: 'accepted',
+    })
+
+    await acceptFriendship({ params: { id: 'friendship-1' }, user: { userId: 'user-b' } }, res)
+
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(res.json).toHaveBeenCalledWith({ message: '此好友邀請無法接受' })
+  })
+
+  it('B 接受 A 的邀請會更新狀態並通知 A', async () => {
+    const res = makeRes()
+    const updatedFriendship = {
+      id: 'friendship-1',
+      requester_id: 'user-a',
+      receiver_id: 'user-b',
+      status: 'accepted',
+    }
+
+    prisma.friendship.findUnique.mockResolvedValue({
+      id: 'friendship-1',
+      requester_id: 'user-a',
+      receiver_id: 'user-b',
+      status: 'pending',
+    })
+    prisma.friendship.update.mockResolvedValue(updatedFriendship)
+
+    await acceptFriendship({ params: { id: 'friendship-1' }, user: { userId: 'user-b' } }, res)
+
+    expect(prisma.friendship.update).toHaveBeenCalledWith({
+      where: { id: 'friendship-1' },
+      data: { status: 'accepted' },
+    })
+    expect(prisma.notification.create).toHaveBeenCalledWith({
+      data: {
+        user_id: 'user-a',
+        type: 'friend_request_accepted',
+        reference_id: 'friendship-1',
+        reference_type: 'friendship',
+        is_read: false,
+      },
+    })
+    expect(res.status).toHaveBeenCalledWith(200)
+    expect(res.json).toHaveBeenCalledWith({
+      message: '已接受好友邀請',
+      friendship: updatedFriendship,
+    })
+  })
+})
+
+describe('rejectFriendship', () => {
+  it('找不到好友邀請回傳 404', async () => {
+    const res = makeRes()
+    prisma.friendship.findUnique.mockResolvedValue(null)
+
+    await rejectFriendship({ params: { id: 'friendship-1' }, user: { userId: 'user-b' } }, res)
+
+    expect(res.status).toHaveBeenCalledWith(404)
+    expect(res.json).toHaveBeenCalledWith({ message: '找不到好友邀請' })
+  })
+
+  it('只有被邀請者可以拒絕好友邀請', async () => {
+    const res = makeRes()
+    prisma.friendship.findUnique.mockResolvedValue({
+      id: 'friendship-1',
+      requester_id: 'user-a',
+      receiver_id: 'user-b',
+      status: 'pending',
+    })
+
+    await rejectFriendship({ params: { id: 'friendship-1' }, user: { userId: 'user-c' } }, res)
+
+    expect(res.status).toHaveBeenCalledWith(403)
+    expect(res.json).toHaveBeenCalledWith({ message: '只有被邀請者可以拒絕好友邀請' })
+  })
+
+  it('非 pending 好友邀請不能拒絕', async () => {
+    const res = makeRes()
+    prisma.friendship.findUnique.mockResolvedValue({
+      id: 'friendship-1',
+      requester_id: 'user-a',
+      receiver_id: 'user-b',
+      status: 'accepted',
+    })
+
+    await rejectFriendship({ params: { id: 'friendship-1' }, user: { userId: 'user-b' } }, res)
+
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(res.json).toHaveBeenCalledWith({ message: '此好友邀請無法拒絕' })
+  })
+
+  it('B 拒絕 A 的邀請只更新狀態，不建立通知', async () => {
+    const res = makeRes()
+    const updatedFriendship = {
+      id: 'friendship-1',
+      requester_id: 'user-a',
+      receiver_id: 'user-b',
+      status: 'rejected',
+    }
+
+    prisma.friendship.findUnique.mockResolvedValue({
+      id: 'friendship-1',
+      requester_id: 'user-a',
+      receiver_id: 'user-b',
+      status: 'pending',
+    })
+    prisma.friendship.update.mockResolvedValue(updatedFriendship)
+
+    await rejectFriendship({ params: { id: 'friendship-1' }, user: { userId: 'user-b' } }, res)
+
+    expect(prisma.friendship.update).toHaveBeenCalledWith({
+      where: { id: 'friendship-1' },
+      data: { status: 'rejected' },
+    })
+    expect(prisma.notification.create).not.toHaveBeenCalled()
+    expect(res.status).toHaveBeenCalledWith(200)
+    expect(res.json).toHaveBeenCalledWith({
+      message: '已拒絕好友邀請',
+      friendship: updatedFriendship,
+    })
   })
 })

@@ -1,4 +1,5 @@
 import prisma from '../lib/prisma.js'
+import { notifyFriendsActivityCreated } from '../services/notificationService.js'
 
 // 情境 a（日期時間都固定，單一候選時段、免投票）、情境 b（日期固定、候選時段複選投票）、
 // 情境 c（候選日期複選、統一時間）、情境 d（候選日期各自不同時段）皆已支援，皆含到期判定與決選投票。
@@ -105,6 +106,11 @@ export async function createActivity(req, res) {
     })
     await prisma.activityAvailability.createMany({ data: creatorAvailability, skipDuplicates: true })
   }
+
+  await notifyFriendsActivityCreated({
+    creatorId,
+    activityId: activity.id,
+  })
 
   return res.status(201).json({ activity: { id: activity.id } })
 }
