@@ -210,6 +210,59 @@ const me = await fetch("http://localhost:3000/api/auth/me", {
 { "message": "未登入" }
 ```
 
+### PATCH `/api/users/me/avatar` — 更換目前使用者頭像 🔒
+
+> 需要登入（cookie 中有效的 `token`）。前端需用 `multipart/form-data` 上傳圖片檔，欄位名稱固定為 `avatar`。後端會將圖片存到本機 `/uploads/avatars/`，並把新的 `avatar_url` 寫回使用者資料。
+
+**Request FormData**
+
+| 欄位     | 類型 | 必填 | 說明                            |
+| -------- | ---- | ---- | ------------------------------- |
+| `avatar` | file | ✅   | JPG、PNG 或 WebP 圖片，最大 2MB |
+
+```js
+const formData = new FormData();
+formData.append("avatar", file);
+
+const res = await fetch("http://localhost:3000/api/users/me/avatar", {
+  method: "PATCH",
+  credentials: "include",
+  body: formData,
+});
+```
+
+**Response**
+
+| 狀態碼 | 說明                        |
+| ------ | --------------------------- |
+| `200`  | 頭像更新成功                |
+| `400`  | 未附檔案 / 檔案格式不支援   |
+| `401`  | 未登入 / token 無效或已過期 |
+| `413`  | 圖片超過 2MB                |
+| `404`  | 用戶不存在                  |
+
+```json
+// 200
+{
+  "user": {
+    "id": "uuid",
+    "display_name": "小明",
+    "avatar_url": "/uploads/avatars/avatar-uuid-1780000000000-random.png"
+  }
+}
+```
+
+```json
+// 400
+{ "message": "請上傳頭像圖片" }
+
+// 400
+{ "message": "頭像只支援 JPG、PNG 或 WebP 圖片" }
+
+// 413
+{ "message": "頭像圖片不可超過 2MB" }
+```
+
 ### POST `/api/friends/request` — 發送好友請求 🔒
 
 > 需要登入（cookie 中有效的 `token`）
