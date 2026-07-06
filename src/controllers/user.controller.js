@@ -1,9 +1,8 @@
 import * as userService from "../services/user.service.js";
 import {
-  avatarUrlForFilename,
-  deleteLocalAvatarByUrl,
-  deleteUploadedAvatarFile,
-} from "../middleware/avatarUpload.js";
+  deleteAvatarImage,
+  uploadAvatarImage,
+} from "../services/cloudinaryAvatarService.js";
 
 export const updateMyAvatar = async (req, res) => {
   if (!req.file) {
@@ -11,21 +10,40 @@ export const updateMyAvatar = async (req, res) => {
   }
 
   const currentUserId = req.user.userId;
-  const avatarUrl = avatarUrlForFilename(req.file.filename);
+  let uploadedAvatar;
 
   try {
     const currentUser = await userService.findUserAvatarById(currentUserId);
     if (!currentUser) {
-      await deleteUploadedAvatarFile(req.file);
       return res.status(404).json({ message: "用戶不存在" });
     }
 
-    const user = await userService.updateUserAvatar(currentUserId, avatarUrl);
-    await deleteLocalAvatarByUrl(currentUser.avatar_url);
+    uploadedAvatar = await uploadAvatarImage(req.file);
+
+    const user = await userService.updateUserAvatar(
+      currentUserId,
+      uploadedAvatar.avatarUrl,
+      uploadedAvatar.publicId,
+    );
+
+    if (currentUser.avatar_public_id) {
+      try {
+        await deleteAvatarImage(currentUser.avatar_public_id);
+      } catch (error) {
+        console.warn("刪除舊 Cloudinary 頭像失敗：", error);
+      }
+    }
 
     return res.status(200).json({ user });
   } catch (error) {
-    await deleteUploadedAvatarFile(req.file);
+    if (uploadedAvatar?.publicId) {
+      try {
+        await deleteAvatarImage(uploadedAvatar.publicId);
+      } catch (cleanupError) {
+        console.warn("清理新 Cloudinary 頭像失敗：", cleanupError);
+      }
+    }
+
     console.error("Update Avatar Controller Error:", error);
     return res.status(500).json({ message: "伺服器內部錯誤" });
   }

@@ -6,14 +6,18 @@ export const findUserAvatarById = async (userId) => {
     select: {
       id: true,
       avatar_url: true,
+      avatar_public_id: true,
     },
   });
 };
 
-export const updateUserAvatar = async (userId, avatarUrl) => {
+export const updateUserAvatar = async (userId, avatarUrl, avatarPublicId) => {
   return prisma.user.update({
     where: { id: userId },
-    data: { avatar_url: avatarUrl },
+    data: {
+      avatar_url: avatarUrl,
+      avatar_public_id: avatarPublicId,
+    },
     select: {
       id: true,
       display_name: true,
