@@ -1,7 +1,7 @@
 # BuJo Backend — API 文檔
 
 Base URL：`http://localhost:3000`  
-Production：`https://<your-domain>`
+Production：`https://bujo-backend.onrender.com`
 
 > 所有需要登入的 API 均透過 **httpOnly cookie** 驗證，前端不需手動帶 token header，但 fetch / axios 需設定 `credentials: 'include'`。
 
