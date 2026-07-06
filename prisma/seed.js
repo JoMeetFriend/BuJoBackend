@@ -40,10 +40,10 @@ async function main() {
 
   // ==================
   // UserIdentities
-  // 全部提供 local 帳密（password123）方便 demo 現場快速切換帳號登入，
+  // 全部提供 local 帳密（BujoDemo#2026）方便 demo 現場快速切換帳號登入，
   // 另外保留 Alice/Bob/Dave 的 google/line 身份示範多種登入方式。
   // ==================
-  const passwordHash = await bcrypt.hash('password123', 10)
+  const passwordHash = await bcrypt.hash('BujoDemo#2026', 10)
   const localAccounts = [
     { user: alice, email: 'alice@gmail.com' },
     { user: bob, email: 'bob@example.com' },
@@ -85,7 +85,7 @@ async function main() {
   })
 
   console.log('✅ UserIdentities 建立完成')
-  console.log('   所有帳號皆可用 <name>@example.com（Alice 用 alice@gmail.com）+ password123 登入')
+  console.log('   所有帳號皆可用 <name>@example.com（Alice 用 alice@gmail.com）+ BujoDemo#2026 登入')
 
   // ==================
   // Friendships
@@ -294,7 +294,7 @@ async function main() {
   console.log('')
   console.log('🎉 Demo 假資料種入完成！')
   console.log('')
-  console.log('登入帳號（密碼統一：password123）：')
+  console.log('登入帳號（密碼統一：BujoDemo#2026）：')
   console.log('  alice@gmail.com   → demo 主帳號，可示範所有功能')
   console.log('  bob/carol/dave/eve/frank/grace@example.com → 配角帳號，可切換視角查看')
 }
