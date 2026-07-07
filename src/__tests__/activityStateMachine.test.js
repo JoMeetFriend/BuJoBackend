@@ -217,6 +217,29 @@ describe('getActivity - recruiting 到期後的合法自動轉移', () => {
       expect.objectContaining({ activity: expect.objectContaining({ status: 'recruiting' }) }),
     )
   })
+
+  it('投票制活動尚未到期時，仍附上 decision_candidates 供建立者提前手動成團', async () => {
+    const slotA = makeSlot('slot-a', { availabilities: [{ candidate_slot_id: 'slot-a' }] })
+    const slotB = makeSlot('slot-b')
+    const activity = makeActivity({
+      candidateSlots: [slotA, slotB],
+      schedule: { requires_voting: true, deadline_at: new Date('2099-01-01T00:00:00Z'), confirmedSlot: null },
+    })
+    prisma.activity.findUnique.mockResolvedValue(activity)
+    const res = makeRes()
+
+    await getActivity(makeReq(), res)
+
+    expect(prisma.activity.updateMany).not.toHaveBeenCalled()
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activity: expect.objectContaining({
+          status: 'recruiting',
+          decision_candidates: [expect.objectContaining({ id: 'slot-a', count: 1 })],
+        }),
+      }),
+    )
+  })
 })
 
 describe('createActivity - 候選時段的 id 對應', () => {

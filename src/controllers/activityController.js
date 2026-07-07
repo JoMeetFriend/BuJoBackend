@@ -286,8 +286,9 @@ export async function getActivity(req, res) {
     }
 
     // 建立者決策階段：附上目前候選/決選的支持人數，方便建立者選擇
+    // recruiting 狀態下（投票制、尚未到期）也要附上，讓建立者可以提前手動成團
     let decisionCandidates = null
-    if (currentStatus === 'voting') {
+    if (currentStatus === 'voting' || (currentStatus === 'recruiting' && sched?.requires_voting)) {
       const availabilities = activity.candidateSlots.flatMap((s) => s.availabilities)
       const { leaders } = getLeaderSlots(activity.candidateSlots, availabilities, joinedCount)
       decisionCandidates = leaders.map((s) => ({
