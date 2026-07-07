@@ -5,33 +5,48 @@ import {
 } from "../services/notificationService.js";
 
 export async function listNotifications(req, res) {
-  const notifications = await listUserNotifications({
-    userId: req.user.userId,
-  });
+  try {
+    const notifications = await listUserNotifications({
+      userId: req.user.userId,
+    });
 
-  return res.json({ notifications });
+    return res.json({ notifications });
+  } catch (error) {
+    console.error("listNotifications 錯誤：", error);
+    return res.status(500).json({ message: "伺服器錯誤" });
+  }
 }
 
 export async function markRead(req, res) {
-  const result = await markNotificationAsRead({
-    userId: req.user.userId,
-    notificationId: req.params.id,
-  });
+  try {
+    const result = await markNotificationAsRead({
+      userId: req.user.userId,
+      notificationId: req.params.id,
+    });
 
-  if (result.count === 0) {
-    return res.status(404).json({ message: "找不到通知" });
+    if (result.count === 0) {
+      return res.status(404).json({ message: "找不到通知" });
+    }
+
+    return res.json({ message: "已標記為已讀" });
+  } catch (error) {
+    console.error("markRead 錯誤：", error);
+    return res.status(500).json({ message: "伺服器錯誤" });
   }
-
-  return res.json({ message: "已標記為已讀" });
 }
 
 export async function markAllRead(req, res) {
-  const result = await markAllNotificationsAsRead({
-    userId: req.user.userId,
-  });
+  try {
+    const result = await markAllNotificationsAsRead({
+      userId: req.user.userId,
+    });
 
-  return res.json({
-    message: "已全部標記為已讀",
-    count: result.count,
-  });
+    return res.json({
+      message: "已全部標記為已讀",
+      count: result.count,
+    });
+  } catch (error) {
+    console.error("markAllRead 錯誤：", error);
+    return res.status(500).json({ message: "伺服器錯誤" });
+  }
 }

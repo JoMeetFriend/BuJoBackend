@@ -280,3 +280,35 @@ describe("markAllRead", () => {
     });
   });
 });
+
+describe("錯誤處理：資料庫拋出例外時不能讓 request 直接 crash", () => {
+  it("listNotifications 遇到例外回傳 500", async () => {
+    prisma.notification.findMany.mockRejectedValue(new Error("db down"));
+    const res = makeRes();
+
+    await listNotifications(makeReq({ userId: "user-b" }), res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({ message: "伺服器錯誤" });
+  });
+
+  it("markRead 遇到例外回傳 500", async () => {
+    prisma.notification.updateMany.mockRejectedValue(new Error("db down"));
+    const res = makeRes();
+
+    await markRead(makeReq({ userId: "user-b", params: { id: "notification-1" } }), res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({ message: "伺服器錯誤" });
+  });
+
+  it("markAllRead 遇到例外回傳 500", async () => {
+    prisma.notification.updateMany.mockRejectedValue(new Error("db down"));
+    const res = makeRes();
+
+    await markAllRead(makeReq({ userId: "user-b" }), res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({ message: "伺服器錯誤" });
+  });
+});
