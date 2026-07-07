@@ -338,14 +338,34 @@ describe('confirmFormation - voting/tiebreaking 合法轉移到 confirmed', () =
 
     await confirmFormation(makeReq(), res)
 
-    expect(prisma.activity.update).toHaveBeenCalledWith({
-      where: { id: ACTIVITY_ID },
+    expect(prisma.activity.updateMany).toHaveBeenCalledWith({
+      where: { id: ACTIVITY_ID, status: 'recruiting' },
       data: { status: 'confirmed' },
     })
     expect(prisma.activitySchedule.update).toHaveBeenCalledWith({
       where: { activity_id: ACTIVITY_ID },
       data: { confirmed_slot_id: 'slot-1' },
     })
+  })
+
+  it('已被其他請求搶先確認成團時回傳 409，不會重複建立通知', async () => {
+    const slot = makeSlot('slot-1')
+    prisma.activity.findUnique.mockResolvedValue(
+      makeActivity({
+        status: 'recruiting',
+        candidateSlots: [slot],
+        participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)],
+        schedule: { requires_voting: false, deadline_at: new Date(), confirmedSlot: null },
+      }),
+    )
+    prisma.activity.updateMany.mockResolvedValueOnce({ count: 0 })
+    const res = makeRes()
+
+    await confirmFormation(makeReq(), res)
+
+    expect(prisma.notification.createMany).not.toHaveBeenCalled()
+    expect(res.status).toHaveBeenCalledWith(409)
+    expect(res.json).toHaveBeenCalledWith({ message: '此活動狀態已被異動，請重新整理後再試' })
   })
 
   it.each(['recruiting', 'cancelled'])('投票制活動在 %s 狀態不能確認成團', async (status) => {
@@ -373,8 +393,8 @@ describe('confirmFormation - voting/tiebreaking 合法轉移到 confirmed', () =
 
     await confirmFormation(makeReq({ body: { candidateSlotId: 'slot-a' } }), res)
 
-    expect(prisma.activity.update).toHaveBeenCalledWith({
-      where: { id: ACTIVITY_ID },
+    expect(prisma.activity.updateMany).toHaveBeenCalledWith({
+      where: { id: ACTIVITY_ID, status },
       data: { status: 'confirmed' },
     })
     expect(prisma.activitySchedule.update).toHaveBeenCalledWith({
@@ -435,13 +455,30 @@ describe('startTiebreak - 只有 voting 可以合法轉移到 tiebreaking', () =
 
     await startTiebreak(makeReq(), res)
 
-    expect(prisma.activity.update).toHaveBeenCalledWith({
-      where: { id: ACTIVITY_ID },
+    expect(prisma.activity.updateMany).toHaveBeenCalledWith({
+      where: { id: ACTIVITY_ID, status: 'voting' },
       data: { status: 'tiebreaking' },
     })
-    expect(prisma.notification.create).toHaveBeenCalledWith({
-      data: { user_id: PARTICIPANT_ID, type: 'tiebreak_started', reference_id: ACTIVITY_ID, reference_type: 'activity' },
+    expect(prisma.notification.createMany).toHaveBeenCalledWith({
+      data: [{ user_id: PARTICIPANT_ID, type: 'tiebreak_started', reference_id: ACTIVITY_ID, reference_type: 'activity' }],
     })
+  })
+
+  it('已被其他請求搶先發起決選投票時回傳 409，不會重複建立通知', async () => {
+    prisma.activity.findUnique.mockResolvedValue(
+      makeActivity({
+        status: 'voting',
+        participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)],
+      }),
+    )
+    prisma.activity.updateMany.mockResolvedValueOnce({ count: 0 })
+    const res = makeRes()
+
+    await startTiebreak(makeReq(), res)
+
+    expect(prisma.notification.createMany).not.toHaveBeenCalled()
+    expect(res.status).toHaveBeenCalledWith(409)
+    expect(res.json).toHaveBeenCalledWith({ message: '此活動狀態已被異動，請重新整理後再試' })
   })
 })
 
@@ -508,14 +545,31 @@ describe('cancelActivity - confirmed/cancelled 是終止狀態，不可再取消
 
     await cancelActivity(makeReq(), res)
 
-    expect(prisma.activity.update).toHaveBeenCalledWith({
-      where: { id: ACTIVITY_ID },
+    expect(prisma.activity.updateMany).toHaveBeenCalledWith({
+      where: { id: ACTIVITY_ID, status },
       data: { status: 'cancelled' },
     })
-    expect(prisma.notification.create).toHaveBeenCalledWith({
-      data: { user_id: PARTICIPANT_ID, type: 'activity_cancelled', reference_id: ACTIVITY_ID, reference_type: 'activity' },
+    expect(prisma.notification.createMany).toHaveBeenCalledWith({
+      data: [{ user_id: PARTICIPANT_ID, type: 'activity_cancelled', reference_id: ACTIVITY_ID, reference_type: 'activity' }],
     })
     expect(res.json).toHaveBeenCalledWith({ message: '活動已取消' })
+  })
+
+  it('已被其他請求搶先取消時回傳 409，不會重複建立通知', async () => {
+    prisma.activity.findUnique.mockResolvedValue(
+      makeActivity({
+        status: 'recruiting',
+        participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)],
+      }),
+    )
+    prisma.activity.updateMany.mockResolvedValueOnce({ count: 0 })
+    const res = makeRes()
+
+    await cancelActivity(makeReq(), res)
+
+    expect(prisma.notification.createMany).not.toHaveBeenCalled()
+    expect(res.status).toHaveBeenCalledWith(409)
+    expect(res.json).toHaveBeenCalledWith({ message: '此活動狀態已被異動，請重新整理後再試' })
   })
 })
 

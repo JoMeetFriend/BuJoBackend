@@ -475,20 +475,36 @@ export async function confirmFormation(req, res) {
 
     const notifyTargets = activity.participants.filter((p) => p.user_id !== userId)
 
-    await prisma.$transaction([
-      prisma.activity.update({ where: { id }, data: { status: 'confirmed' } }),
-      prisma.activitySchedule.update({ where: { activity_id: id }, data: { confirmed_slot_id: winningSlot.id } }),
-      ...notifyTargets.map((p) =>
-        prisma.notification.create({
-          data: {
+    // 用 updateMany + where status=讀到的狀態 當樂觀鎖，避免同一個創建者重複送出造成重複轉換/重複通知
+    const won = await prisma.$transaction(async (tx) => {
+      const { count } = await tx.activity.updateMany({
+        where: { id, status: activity.status },
+        data: { status: 'confirmed' },
+      })
+      if (count === 0) return false
+
+      await tx.activitySchedule.update({
+        where: { activity_id: id },
+        data: { confirmed_slot_id: winningSlot.id },
+      })
+
+      if (notifyTargets.length > 0) {
+        await tx.notification.createMany({
+          data: notifyTargets.map((p) => ({
             user_id: p.user_id,
             type: 'activity_confirmed',
             reference_id: id,
             reference_type: 'activity',
-          },
+          })),
         })
-      ),
-    ])
+      }
+
+      return true
+    })
+
+    if (!won) {
+      return res.status(409).json({ message: '此活動狀態已被異動，請重新整理後再試' })
+    }
 
     return res.json({ message: '成團成功' })
   } catch (error) {
@@ -513,14 +529,30 @@ export async function startTiebreak(req, res) {
 
     const notifyTargets = activity.participants.filter((p) => p.user_id !== userId)
 
-    await prisma.$transaction([
-      prisma.activity.update({ where: { id }, data: { status: 'tiebreaking' } }),
-      ...notifyTargets.map((p) =>
-        prisma.notification.create({
-          data: { user_id: p.user_id, type: 'tiebreak_started', reference_id: id, reference_type: 'activity' },
+    const won = await prisma.$transaction(async (tx) => {
+      const { count } = await tx.activity.updateMany({
+        where: { id, status: 'voting' },
+        data: { status: 'tiebreaking' },
+      })
+      if (count === 0) return false
+
+      if (notifyTargets.length > 0) {
+        await tx.notification.createMany({
+          data: notifyTargets.map((p) => ({
+            user_id: p.user_id,
+            type: 'tiebreak_started',
+            reference_id: id,
+            reference_type: 'activity',
+          })),
         })
-      ),
-    ])
+      }
+
+      return true
+    })
+
+    if (!won) {
+      return res.status(409).json({ message: '此活動狀態已被異動，請重新整理後再試' })
+    }
 
     return res.json({ message: '已發起決選投票' })
   } catch (error) {
@@ -590,19 +622,30 @@ export async function cancelActivity(req, res) {
 
     const notifyTargets = activity.participants.filter((p) => p.user_id !== userId)
 
-    await prisma.$transaction([
-      prisma.activity.update({ where: { id }, data: { status: 'cancelled' } }),
-      ...notifyTargets.map((p) =>
-        prisma.notification.create({
-          data: {
+    const won = await prisma.$transaction(async (tx) => {
+      const { count } = await tx.activity.updateMany({
+        where: { id, status: activity.status },
+        data: { status: 'cancelled' },
+      })
+      if (count === 0) return false
+
+      if (notifyTargets.length > 0) {
+        await tx.notification.createMany({
+          data: notifyTargets.map((p) => ({
             user_id: p.user_id,
             type: 'activity_cancelled',
             reference_id: id,
             reference_type: 'activity',
-          },
+          })),
         })
-      ),
-    ])
+      }
+
+      return true
+    })
+
+    if (!won) {
+      return res.status(409).json({ message: '此活動狀態已被異動，請重新整理後再試' })
+    }
 
     return res.json({ message: '活動已取消' })
   } catch (error) {
