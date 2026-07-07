@@ -767,6 +767,8 @@ function formatCard(act, userId) {
     has_joined: act.participants.some((p) => p.user_id === userId),
     date,
     date_iso: dateIso,
+    // 供前端在同一天有多筆已成團活動時，依實際開始時間排序用；未成團一律為 null
+    confirmed_start: confirmedSlot ? confirmedSlot.slot_start : null,
     time,
     participants: act.participants.slice(0, 5).map((p) => ({
       id: p.user_id,
