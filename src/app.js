@@ -1,4 +1,5 @@
 import "dotenv/config";
+import "express-async-errors";
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -41,5 +42,10 @@ app.use("/api/activities", activityRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/friends", friendRoutes);
 app.use("/api/notifications", notificationRoutes);
+
+app.use((err, req, res, next) => {
+  console.error("未攔截的例外：", err);
+  res.status(500).json({ message: "伺服器錯誤" });
+});
 
 export default app
