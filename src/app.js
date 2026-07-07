@@ -17,11 +17,15 @@ const allowedOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').map(o => o
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, origin)
-    } else {
-      callback(new Error('Not allowed by CORS'))
+    // 沒有 Origin 標頭代表不是瀏覽器的跨站請求（curl、server-to-server、健康檢查等），
+    // CORS 本來就是瀏覽器的同源限制機制，這類請求不受影響，明確允許、不落入白名單比對
+    if (!origin) {
+      return callback(null, true)
     }
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true)
+    }
+    return callback(new Error('Not allowed by CORS'))
   },
   credentials: true,
 }))
