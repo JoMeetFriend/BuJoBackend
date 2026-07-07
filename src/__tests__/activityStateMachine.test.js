@@ -4,6 +4,7 @@ jest.unstable_mockModule('../lib/prisma.js', () => {
   const prisma = {
     activity: {
       findUnique: jest.fn(),
+      create: jest.fn(),
       update: jest.fn(),
       updateMany: jest.fn(() => Promise.resolve({ count: 1 })),
     },
@@ -11,6 +12,7 @@ jest.unstable_mockModule('../lib/prisma.js', () => {
     activityParticipant: { findUnique: jest.fn(), update: jest.fn(), create: jest.fn() },
     activityAvailability: { createMany: jest.fn(), deleteMany: jest.fn() },
     activityTiebreakVote: { upsert: jest.fn() },
+    friendship: { findMany: jest.fn(() => Promise.resolve([])) },
     notification: { create: jest.fn(), createMany: jest.fn() },
     $transaction: jest.fn((arg) => (Array.isArray(arg) ? Promise.all(arg) : arg(prisma))),
   }
@@ -19,6 +21,7 @@ jest.unstable_mockModule('../lib/prisma.js', () => {
 })
 
 const {
+  createActivity,
   getActivity,
   joinActivity,
   confirmFormation,
@@ -212,6 +215,45 @@ describe('getActivity - recruiting 到期後的合法自動轉移', () => {
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({ activity: expect.objectContaining({ status: 'recruiting' }) }),
     )
+  })
+})
+
+describe('createActivity - 候選時段的 id 對應', () => {
+  it('相同 start/end 的候選時段各自對應到不同的 id，不會互相覆蓋', async () => {
+    const start = new Date('2026-08-01T01:00:00Z')
+    const end = new Date('2026-08-01T02:00:00Z')
+    prisma.activity.create.mockResolvedValue({
+      id: ACTIVITY_ID,
+      candidateSlots: [
+        { id: 'slot-x', slot_start: start, slot_end: end },
+        { id: 'slot-y', slot_start: start, slot_end: end },
+      ],
+    })
+
+    const req = makeReq({
+      body: {
+        title: '重複時段測試',
+        deadline: new Date('2026-07-31T00:00:00Z').toISOString(),
+        singleDate: '2026/08/01',
+        slots: [
+          { startTime: '上午 9:00', endTime: '上午 10:00' },
+          { startTime: '上午 9:00', endTime: '上午 10:00' },
+        ],
+        creatorSlotIndexes: [0, 1],
+      },
+    })
+    const res = makeRes()
+
+    await createActivity(req, res)
+
+    expect(prisma.activityAvailability.createMany).toHaveBeenCalledWith({
+      data: [
+        { candidate_slot_id: 'slot-x', user_id: CREATOR_ID },
+        { candidate_slot_id: 'slot-y', user_id: CREATOR_ID },
+      ],
+      skipDuplicates: true,
+    })
+    expect(res.status).toHaveBeenCalledWith(201)
   })
 })
 

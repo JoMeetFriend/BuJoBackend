@@ -94,14 +94,19 @@ export async function createActivity(req, res) {
     })
 
     if (isVoting) {
-      // 用 slot_start/slot_end 的值把剛建立的候選時段對應回原本陣列的索引（不依賴回傳順序）
-      const idByTiming = new Map(
-        activity.candidateSlots.map((s) => [`${s.slot_start.getTime()}_${s.slot_end.getTime()}`, s.id]),
-      )
+      // 用 slot_start/slot_end 的值把剛建立的候選時段對應回原本陣列的索引（不依賴回傳順序）；
+      // 同一組時段可能重複（相同 start/end），用 queue 存 id 逐一取用，避免互相覆蓋、共用同一個 id
+      const idsByTiming = new Map()
+      for (const s of activity.candidateSlots) {
+        const key = `${s.slot_start.getTime()}_${s.slot_end.getTime()}`
+        if (!idsByTiming.has(key)) idsByTiming.set(key, [])
+        idsByTiming.get(key).push(s.id)
+      }
       const creatorAvailability = creatorSlotIndexes.map((i) => {
         const { slot_start, slot_end } = candidateSlotsData[i]
+        const key = `${slot_start.getTime()}_${slot_end.getTime()}`
         return {
-          candidate_slot_id: idByTiming.get(`${slot_start.getTime()}_${slot_end.getTime()}`),
+          candidate_slot_id: idsByTiming.get(key).shift(),
           user_id: creatorId,
         }
       })
