@@ -246,6 +246,115 @@ async function main() {
   console.log('✅ Activities 建立完成（recruiting / voting / tiebreaking / confirmed / cancelled 皆已涵蓋）')
 
   // ==================
+  // 行事曆歷史示範活動
+  // 對應舊版前端 CalendarMain.vue 寫死的 6 筆假資料（KTV / 小酌 / 晚餐 / 爬山 / 桌遊 / 歌唱），
+  // 現在改成種進資料庫，讓行事曆改抓真實 API 後這幾筆歷史行程依然能在 demo 上看到。
+  // 全部設在過去，示範「本月已發生的行程」：
+  // - KTV / 爬山：Alice 以參與者身分加入他人發起、尚未成團的活動 → 前端行事曆歸類 JOINING
+  // - 小酌：Alice 自己發起、尚未成團 → 前端行事曆歸類 PERSONAL
+  // - 晚餐 / 歌唱：已成團 → 前端行事曆歸類 FORMED
+  // - 桌遊：Carol 發起、Alice 未加入 → 招募中，行事曆本來就會濾掉，純墊資料用
+  // ==================
+
+  await prisma.activity.create({
+    data: {
+      creator_id: carol.id,
+      title: 'KTV',
+      location: '西門町錢櫃',
+      participant_target: 6,
+      status: 'recruiting',
+      schedule: { create: { requires_voting: false, deadline_at: at(-39, 18) } },
+      candidateSlots: { create: { slot_start: at(-38, 19), slot_end: at(-38, 23) } },
+      participants: { create: [{ user_id: carol.id }, { user_id: alice.id }, { user_id: bob.id }] },
+      chat: { create: { name: 'KTV' } },
+    },
+  })
+
+  await prisma.activity.create({
+    data: {
+      creator_id: alice.id,
+      title: '小酌',
+      location: '公館某居酒屋',
+      participant_target: 4,
+      status: 'recruiting',
+      schedule: { create: { requires_voting: false, deadline_at: at(-37, 20) } },
+      candidateSlots: { create: { slot_start: at(-36, 21), slot_end: at(-36, 23) } },
+      participants: { create: [{ user_id: alice.id }] },
+      chat: { create: { name: '小酌' } },
+    },
+  })
+
+  const dinnerActivity = await prisma.activity.create({
+    data: {
+      creator_id: dave.id,
+      title: '晚餐',
+      location: '公館某餐酒館',
+      participant_target: 4,
+      status: 'confirmed',
+      schedule: { create: { requires_voting: false, deadline_at: at(-36, 18) } },
+      candidateSlots: { create: { slot_start: at(-35, 18), slot_end: at(-35, 20) } },
+      participants: { create: [{ user_id: dave.id }, { user_id: alice.id }] },
+      chat: { create: { name: '晚餐' } },
+    },
+    include: { candidateSlots: true },
+  })
+  await prisma.activitySchedule.update({
+    where: { activity_id: dinnerActivity.id },
+    data: { confirmed_slot_id: dinnerActivity.candidateSlots[0].id },
+  })
+
+  await prisma.activity.create({
+    data: {
+      creator_id: bob.id,
+      title: '爬山',
+      location: '象山步道',
+      participant_target: 8,
+      status: 'recruiting',
+      schedule: { create: { requires_voting: false, deadline_at: at(-31, 20) } },
+      candidateSlots: { create: { slot_start: at(-30, 6), slot_end: at(-30, 14) } },
+      participants: { create: [{ user_id: bob.id }, { user_id: alice.id }] },
+      chat: { create: { name: '爬山' } },
+    },
+  })
+
+  await prisma.activity.create({
+    data: {
+      creator_id: carol.id,
+      title: '桌遊',
+      location: '信義區桌遊店',
+      participant_target: 6,
+      status: 'recruiting',
+      schedule: { create: { requires_voting: false, deadline_at: at(-29, 19) } },
+      candidateSlots: { create: { slot_start: at(-28, 19), slot_end: at(-28, 22) } },
+      participants: { create: [{ user_id: carol.id }] },
+      chat: { create: { name: '桌遊' } },
+    },
+  })
+
+  const singingActivity = await prisma.activity.create({
+    data: {
+      creator_id: alice.id,
+      title: '歌唱',
+      location: 'K award 練歌房',
+      participant_target: 6,
+      status: 'confirmed',
+      schedule: { create: { requires_voting: false, deadline_at: at(-23, 18) } },
+      candidateSlots: { create: { slot_start: at(-22, 19), slot_end: at(-22, 22) } },
+      participants: {
+        create: [{ user_id: alice.id }, { user_id: bob.id }, { user_id: carol.id }],
+      },
+      chat: { create: { name: '歌唱' } },
+    },
+    include: { candidateSlots: true },
+  })
+  await prisma.activitySchedule.update({
+    where: { activity_id: singingActivity.id },
+    data: { confirmed_slot_id: singingActivity.candidateSlots[0].id },
+  })
+
+  console.log('✅ 行事曆歷史示範活動建立完成（KTV / 小酌 / 晚餐 / 爬山 / 桌遊 / 歌唱）')
+
+  // ==================
   // Notifications
   // 依照 notificationService.js / activityController.js 實際會產生通知的
   // 事件回補歷史紀錄，讓每個角色的通知列表都有內容可看：

@@ -1,4 +1,5 @@
 import "dotenv/config";
+import "express-async-errors";
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
@@ -12,15 +13,21 @@ import notificationRoutes from "./routes/notifications.js";
 
 const app = express();
 
+app.set("trust proxy", 1);
+
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').map(o => o.trim()).filter(Boolean)
 
 app.use(cors({
   origin: (origin, callback) => {
-    if (!origin || allowedOrigins.includes(origin)) {
-      callback(null, origin)
-    } else {
-      callback(new Error('Not allowed by CORS'))
+    // 沒有 Origin 標頭代表不是瀏覽器的跨站請求（curl、server-to-server、健康檢查等），
+    // CORS 本來就是瀏覽器的同源限制機制，這類請求不受影響，明確允許、不落入白名單比對
+    if (!origin) {
+      return callback(null, true)
     }
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true)
+    }
+    return callback(new Error('Not allowed by CORS'))
   },
   credentials: true,
 }))
@@ -41,5 +48,10 @@ app.use("/api/activities", activityRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/friends", friendRoutes);
 app.use("/api/notifications", notificationRoutes);
+
+app.use((err, req, res, next) => {
+  console.error("未攔截的例外：", err);
+  res.status(500).json({ message: "伺服器錯誤" });
+});
 
 export default app

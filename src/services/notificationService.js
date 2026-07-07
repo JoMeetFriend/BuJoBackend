@@ -5,6 +5,10 @@ export const NOTIFICATION_TYPES = {
   FRIEND_REQUEST_CREATED: "friend_request_created",
   FRIEND_REQUEST_ACCEPTED: "friend_request_accepted",
   ACTIVITY_CREATED: "activity_created",
+  ACTIVITY_CONFIRMED: "activity_confirmed",
+  ACTIVITY_CANCELLED: "activity_cancelled",
+  TIME_TO_PICK: "time_to_pick",
+  FORMATION_READY: "formation_ready",
 };
 
 export const NOTIFICATION_REFERENCE_TYPES = {
@@ -393,13 +397,29 @@ async function formatActivityNotification(notification, db) {
 
   return buildNotificationResponse(notification, {
     category: "activity",
-    message: `${creatorName} 建立了新活動：${activityTitle}`,
+    message: buildActivityMessage(notification.type, { creatorName, activityTitle }),
     reference: {
       type: NOTIFICATION_REFERENCE_TYPES.ACTIVITY,
       id: notification.reference_id,
       status: activity?.status || null,
     },
   });
+}
+
+function buildActivityMessage(type, { creatorName, activityTitle }) {
+  switch (type) {
+    case NOTIFICATION_TYPES.ACTIVITY_CONFIRMED:
+      return `「${activityTitle}」已確認成團`;
+    case NOTIFICATION_TYPES.ACTIVITY_CANCELLED:
+      return `「${activityTitle}」已取消`;
+    case NOTIFICATION_TYPES.TIME_TO_PICK:
+      return `「${activityTitle}」候選時段票數不相上下，請選擇最終時段`;
+    case NOTIFICATION_TYPES.FORMATION_READY:
+      return `「${activityTitle}」人數已滿，請確認成團`;
+    case NOTIFICATION_TYPES.ACTIVITY_CREATED:
+    default:
+      return `${creatorName} 建立了新活動：${activityTitle}`;
+  }
 }
 
 async function buildActivityLineMessage({ activityId }, db) {

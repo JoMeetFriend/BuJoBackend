@@ -2,7 +2,8 @@ import prisma from '../lib/prisma.js'
 import { notifyFriendsActivityCreated } from '../services/notificationService.js'
 
 // 情境 a（日期時間都固定，單一候選時段、免投票）、情境 b（日期固定、候選時段複選投票）、
-// 情境 c（候選日期複選、統一時間）、情境 d（候選日期各自不同時段）皆已支援，皆含到期判定與決選投票。
+// 情境 c（候選日期複選、統一時間）、情境 d（候選日期各自不同時段）皆已支援，皆含到期判定。
+// 候選時段平票時交由建立者裁決（voting 狀態的 confirmFormation），沒有額外的決選投票關卡。
 
 export async function createActivity(req, res) {
   const {
@@ -94,14 +95,19 @@ export async function createActivity(req, res) {
     })
 
     if (isVoting) {
-      // 用 slot_start/slot_end 的值把剛建立的候選時段對應回原本陣列的索引（不依賴回傳順序）
-      const idByTiming = new Map(
-        activity.candidateSlots.map((s) => [`${s.slot_start.getTime()}_${s.slot_end.getTime()}`, s.id]),
-      )
+      // 用 slot_start/slot_end 的值把剛建立的候選時段對應回原本陣列的索引（不依賴回傳順序）；
+      // 同一組時段可能重複（相同 start/end），用 queue 存 id 逐一取用，避免互相覆蓋、共用同一個 id
+      const idsByTiming = new Map()
+      for (const s of activity.candidateSlots) {
+        const key = `${s.slot_start.getTime()}_${s.slot_end.getTime()}`
+        if (!idsByTiming.has(key)) idsByTiming.set(key, [])
+        idsByTiming.get(key).push(s.id)
+      }
       const creatorAvailability = creatorSlotIndexes.map((i) => {
         const { slot_start, slot_end } = candidateSlotsData[i]
+        const key = `${slot_start.getTime()}_${slot_end.getTime()}`
         return {
-          candidate_slot_id: idByTiming.get(`${slot_start.getTime()}_${slot_end.getTime()}`),
+          candidate_slot_id: idsByTiming.get(key).shift(),
           user_id: creatorId,
         }
       })
@@ -189,7 +195,7 @@ export async function getActivity(req, res) {
       include: {
         creator: { select: { id: true, display_name: true, avatar_url: true } },
         schedule: { include: { confirmedSlot: true } },
-        candidateSlots: { include: { availabilities: true, tiebreakVotes: true } },
+        candidateSlots: { include: { availabilities: true } },
         participants: {
           where: { status: 'joined' },
           include: {
@@ -213,60 +219,73 @@ export async function getActivity(req, res) {
 
     if (currentStatus === 'recruiting' && sched && now >= sched.deadline_at) {
       const target = activity.participant_target
+      let winningSlot = null
+      let nextStatus
+
       if (target && joinedCount < target) {
-        await prisma.$transaction([
-          prisma.activity.update({ where: { id }, data: { status: 'cancelled' } }),
-          ...activity.participants.map((p) =>
-            prisma.notification.create({
-              data: { user_id: p.user_id, type: 'activity_cancelled', reference_id: id, reference_type: 'activity' },
-            })
-          ),
-        ])
-        currentStatus = 'cancelled'
+        nextStatus = 'cancelled'
       } else if (!sched.requires_voting) {
-        const winningSlot = activity.candidateSlots[0]
-        await prisma.$transaction([
-          prisma.activity.update({ where: { id }, data: { status: 'confirmed' } }),
-          prisma.activitySchedule.update({ where: { activity_id: id }, data: { confirmed_slot_id: winningSlot.id } }),
-          ...activity.participants.map((p) =>
-            prisma.notification.create({
-              data: { user_id: p.user_id, type: 'activity_confirmed', reference_id: id, reference_type: 'activity' },
-            })
-          ),
-        ])
-        currentStatus = 'confirmed'
-        confirmedSlot = winningSlot
+        nextStatus = 'confirmed'
+        winningSlot = activity.candidateSlots[0]
       } else {
         const availabilities = activity.candidateSlots.flatMap((s) => s.availabilities)
-        const { leaders, isUnanimous } = getLeaderSlots(activity.candidateSlots, availabilities, joinedCount)
-        if (isUnanimous) {
-          const winningSlot = leaders[0]
-          await prisma.$transaction([
-            prisma.activity.update({ where: { id }, data: { status: 'confirmed' } }),
-            prisma.activitySchedule.update({ where: { activity_id: id }, data: { confirmed_slot_id: winningSlot.id } }),
-            ...activity.participants.map((p) =>
-              prisma.notification.create({
-                data: { user_id: p.user_id, type: 'activity_confirmed', reference_id: id, reference_type: 'activity' },
-              })
-            ),
-          ])
-          currentStatus = 'confirmed'
-          confirmedSlot = winningSlot
-        } else {
-          await prisma.$transaction([
-            prisma.activity.update({ where: { id }, data: { status: 'voting' } }),
-            prisma.notification.create({
-              data: { user_id: activity.creator_id, type: 'time_to_pick', reference_id: id, reference_type: 'activity' },
-            }),
-          ])
-          currentStatus = 'voting'
+        const outcome = decideFormationOutcome(activity.candidateSlots, availabilities, joinedCount)
+        nextStatus = outcome.status
+        winningSlot = outcome.winningSlot
+      }
+
+      // 用 updateMany + where status='recruiting' 當樂觀鎖：GET 可能被併發打到，
+      // 只有真正把狀態從 recruiting 搶下來的那個請求才會建立通知，避免重複通知
+      const won = await prisma.$transaction(async (tx) => {
+        const { count } = await tx.activity.updateMany({
+          where: { id, status: 'recruiting' },
+          data: { status: nextStatus },
+        })
+        if (count === 0) return false
+
+        if (winningSlot) {
+          await tx.activitySchedule.update({
+            where: { activity_id: id },
+            data: { confirmed_slot_id: winningSlot.id },
+          })
         }
+
+        if (nextStatus === 'voting') {
+          await tx.notification.create({
+            data: { user_id: activity.creator_id, type: 'time_to_pick', reference_id: id, reference_type: 'activity' },
+          })
+        } else {
+          await tx.notification.createMany({
+            data: activity.participants.map((p) => ({
+              user_id: p.user_id,
+              type: nextStatus === 'cancelled' ? 'activity_cancelled' : 'activity_confirmed',
+              reference_id: id,
+              reference_type: 'activity',
+            })),
+          })
+        }
+
+        return true
+      })
+
+      if (won) {
+        currentStatus = nextStatus
+        confirmedSlot = winningSlot ?? confirmedSlot
+      } else {
+        // 沒搶到：代表另一個併發請求已經完成轉換，重新讀取最新狀態避免回傳過期資料
+        const fresh = await prisma.activity.findUnique({
+          where: { id },
+          select: { status: true, schedule: { select: { confirmedSlot: true } } },
+        })
+        currentStatus = fresh.status
+        confirmedSlot = fresh.schedule?.confirmedSlot ?? confirmedSlot
       }
     }
 
     // 建立者決策階段：附上目前候選/決選的支持人數，方便建立者選擇
+    // recruiting 狀態下（投票制、尚未到期）也要附上，讓建立者可以提前手動成團
     let decisionCandidates = null
-    if (currentStatus === 'voting') {
+    if (currentStatus === 'voting' || (currentStatus === 'recruiting' && sched?.requires_voting)) {
       const availabilities = activity.candidateSlots.flatMap((s) => s.availabilities)
       const { leaders } = getLeaderSlots(activity.candidateSlots, availabilities, joinedCount)
       decisionCandidates = leaders.map((s) => ({
@@ -274,16 +293,6 @@ export async function getActivity(req, res) {
         slot_start: s.slot_start,
         slot_end: s.slot_end,
         count: availabilities.filter((a) => a.candidate_slot_id === s.id).length,
-      }))
-    } else if (currentStatus === 'tiebreaking') {
-      const availabilities = activity.candidateSlots.flatMap((s) => s.availabilities)
-      const { leaders } = getLeaderSlots(activity.candidateSlots, availabilities, joinedCount)
-      const tiebreakVotes = activity.candidateSlots.flatMap((s) => s.tiebreakVotes)
-      decisionCandidates = leaders.map((s) => ({
-        id: s.id,
-        slot_start: s.slot_start,
-        slot_end: s.slot_end,
-        count: tiebreakVotes.filter((v) => v.candidate_slot_id === s.id).length,
       }))
     }
 
@@ -309,6 +318,7 @@ export async function getActivity(req, res) {
           slot_start: s.slot_start,
           slot_end: s.slot_end,
           all_day: s.all_day,
+          is_selected: s.availabilities.some((a) => a.user_id === userId),
         })),
         decision_candidates: decisionCandidates,
         confirmed_slot: confirmedSlot,
@@ -332,65 +342,104 @@ export async function joinActivity(req, res) {
   const { candidateSlotIds } = req.body
 
   try {
-    const activity = await prisma.activity.findUnique({
-      where: { id },
-      include: {
-        participants: { where: { status: 'joined' } },
-        schedule: true,
-        candidateSlots: true,
-      },
-    })
+    const outcome = await prisma.$transaction(async (tx) => {
+      // 先鎖住這筆活動的 row，讓同一活動的併發報名請求依序處理，
+      // 避免兩個請求同時讀到「還有名額」而一起插入，導致人數超過 participant_target
+      await tx.$queryRaw`SELECT id FROM activities WHERE id = ${id} FOR UPDATE`
 
-    if (!activity) return res.status(404).json({ message: '活動不存在' })
-    if (activity.status !== 'recruiting') return res.status(400).json({ message: '此活動不在揪團中' })
-    if (activity.creator_id === userId) return res.status(400).json({ message: '不能報名自己建立的活動' })
+      const activity = await tx.activity.findUnique({
+        where: { id },
+        include: {
+          participants: { where: { status: 'joined' } },
+          schedule: true,
+          candidateSlots: { include: { availabilities: true } },
+        },
+      })
 
-    const requiresVoting = !!activity.schedule?.requires_voting
-    let availabilityData = []
-    if (requiresVoting) {
-      const ids = Array.isArray(candidateSlotIds) ? [...new Set(candidateSlotIds)] : []
-      if (ids.length === 0) {
-        return res.status(400).json({ message: '請選擇至少一個候選時段' })
+      if (!activity) return { status: 404, message: '活動不存在' }
+      if (activity.status !== 'recruiting') return { status: 400, message: '此活動不在揪團中' }
+      if (activity.creator_id === userId) return { status: 400, message: '不能報名自己建立的活動' }
+
+      const requiresVoting = !!activity.schedule?.requires_voting
+      let availabilityData = []
+      if (requiresVoting) {
+        const ids = Array.isArray(candidateSlotIds) ? [...new Set(candidateSlotIds)] : []
+        if (ids.length === 0) {
+          return { status: 400, message: '請選擇至少一個候選時段' }
+        }
+        const validIds = new Set(activity.candidateSlots.map((s) => s.id))
+        if (!ids.every((sid) => validIds.has(sid))) {
+          return { status: 400, message: '候選時段不存在' }
+        }
+        availabilityData = ids.map((candidate_slot_id) => ({ candidate_slot_id, user_id: userId }))
       }
-      const validIds = new Set(activity.candidateSlots.map((s) => s.id))
-      if (!ids.every((sid) => validIds.has(sid))) {
-        return res.status(400).json({ message: '候選時段不存在' })
+
+      const currentCount = activity.participants.length
+      if (activity.participant_target && currentCount >= activity.participant_target) {
+        return { status: 400, message: '活動人數已滿' }
       }
-      availabilityData = ids.map((candidate_slot_id) => ({ candidate_slot_id, user_id: userId }))
-    }
 
-    const currentCount = activity.participants.length
-    if (activity.participant_target && currentCount >= activity.participant_target) {
-      return res.status(400).json({ message: '活動人數已滿' })
-    }
+      const existing = await tx.activityParticipant.findUnique({
+        where: { activity_id_user_id: { activity_id: id, user_id: userId } },
+      })
+      if (existing?.status === 'joined') return { status: 400, message: '你已報名此活動' }
 
-    const existing = await prisma.activityParticipant.findUnique({
-      where: { activity_id_user_id: { activity_id: id, user_id: userId } },
-    })
-    if (existing?.status === 'joined') return res.status(400).json({ message: '你已報名此活動' })
+      const newCount = currentCount + 1
+      const targetReached = !!activity.participant_target && newCount >= activity.participant_target
 
-    const newCount = currentCount + 1
-    const notifyCreator = activity.participant_target && newCount >= activity.participant_target
+      if (existing) {
+        await tx.activityParticipant.update({
+          where: { id: existing.id },
+          data: { status: 'joined', joined_at: new Date() },
+        })
+      } else {
+        await tx.activityParticipant.create({
+          data: { activity_id: id, user_id: userId },
+        })
+      }
 
-    await prisma.$transaction([
-      existing
-        ? prisma.activityParticipant.update({
-            where: { id: existing.id },
-            data: { status: 'joined', joined_at: new Date() },
+      if (requiresVoting) {
+        await tx.activityAvailability.createMany({ data: availabilityData, skipDuplicates: true })
+      }
+
+      // 人數一達標就立刻判定：免投票直接成團；投票制則交給目前票數決定直接成團或進入 voting 讓建立者選
+      if (targetReached) {
+        const outcome = requiresVoting
+          ? decideFormationOutcome(
+              activity.candidateSlots,
+              [...activity.candidateSlots.flatMap((s) => s.availabilities), ...availabilityData],
+              newCount,
+            )
+          : { status: 'confirmed', winningSlot: activity.candidateSlots[0] }
+
+        await tx.activity.update({ where: { id }, data: { status: outcome.status } })
+
+        if (outcome.status === 'confirmed') {
+          await tx.activitySchedule.update({
+            where: { activity_id: id },
+            data: { confirmed_slot_id: outcome.winningSlot.id },
           })
-        : prisma.activityParticipant.create({
-            data: { activity_id: id, user_id: userId },
-          }),
-      ...(requiresVoting
-        ? [prisma.activityAvailability.createMany({ data: availabilityData, skipDuplicates: true })]
-        : []),
-      ...(notifyCreator
-        ? [prisma.notification.create({
-            data: { user_id: activity.creator_id, type: 'formation_ready', reference_id: id, reference_type: 'activity' },
-          })]
-        : []),
-    ])
+          await tx.notification.createMany({
+            data: activity.participants.map((p) => ({
+              user_id: p.user_id,
+              type: 'activity_confirmed',
+              reference_id: id,
+              reference_type: 'activity',
+            })),
+          })
+        } else {
+          await tx.notification.create({
+            data: { user_id: activity.creator_id, type: 'time_to_pick', reference_id: id, reference_type: 'activity' },
+          })
+        }
+      }
 
+      return null
+    })
+
+    if (outcome) {
+      return res.status(outcome.status).json({ message: outcome.message })
+    }
     return res.json({ message: '報名成功' })
   } catch (error) {
     console.error('joinActivity 錯誤：', error)
@@ -427,7 +476,7 @@ export async function confirmFormation(req, res) {
       if (activity.status !== 'recruiting') return res.status(400).json({ message: '此活動狀態不允許確認成團' })
       winningSlot = activity.candidateSlots[0]
     } else {
-      if (activity.status !== 'voting' && activity.status !== 'tiebreaking') {
+      if (activity.status !== 'recruiting' && activity.status !== 'voting') {
         return res.status(400).json({ message: '此活動狀態不允許確認成團' })
       }
       if (!candidateSlotId) return res.status(400).json({ message: '請選擇要確認的候選時段' })
@@ -441,97 +490,40 @@ export async function confirmFormation(req, res) {
 
     const notifyTargets = activity.participants.filter((p) => p.user_id !== userId)
 
-    await prisma.$transaction([
-      prisma.activity.update({ where: { id }, data: { status: 'confirmed' } }),
-      prisma.activitySchedule.update({ where: { activity_id: id }, data: { confirmed_slot_id: winningSlot.id } }),
-      ...notifyTargets.map((p) =>
-        prisma.notification.create({
-          data: {
+    // 用 updateMany + where status=讀到的狀態 當樂觀鎖，避免同一個創建者重複送出造成重複轉換/重複通知
+    const won = await prisma.$transaction(async (tx) => {
+      const { count } = await tx.activity.updateMany({
+        where: { id, status: activity.status },
+        data: { status: 'confirmed' },
+      })
+      if (count === 0) return false
+
+      await tx.activitySchedule.update({
+        where: { activity_id: id },
+        data: { confirmed_slot_id: winningSlot.id },
+      })
+
+      if (notifyTargets.length > 0) {
+        await tx.notification.createMany({
+          data: notifyTargets.map((p) => ({
             user_id: p.user_id,
             type: 'activity_confirmed',
             reference_id: id,
             reference_type: 'activity',
-          },
+          })),
         })
-      ),
-    ])
+      }
+
+      return true
+    })
+
+    if (!won) {
+      return res.status(409).json({ message: '此活動狀態已被異動，請重新整理後再試' })
+    }
 
     return res.json({ message: '成團成功' })
   } catch (error) {
     console.error('confirmFormation 錯誤：', error)
-    return res.status(500).json({ message: '伺服器錯誤' })
-  }
-}
-
-export async function startTiebreak(req, res) {
-  const { id } = req.params
-  const userId = req.user.userId
-
-  try {
-    const activity = await prisma.activity.findUnique({
-      where: { id },
-      include: { participants: { where: { status: 'joined' } } },
-    })
-
-    if (!activity) return res.status(404).json({ message: '活動不存在' })
-    if (activity.creator_id !== userId) return res.status(403).json({ message: '只有創建者可以發起決選投票' })
-    if (activity.status !== 'voting') return res.status(400).json({ message: '此活動狀態不允許發起決選投票' })
-
-    const notifyTargets = activity.participants.filter((p) => p.user_id !== userId)
-
-    await prisma.$transaction([
-      prisma.activity.update({ where: { id }, data: { status: 'tiebreaking' } }),
-      ...notifyTargets.map((p) =>
-        prisma.notification.create({
-          data: { user_id: p.user_id, type: 'tiebreak_started', reference_id: id, reference_type: 'activity' },
-        })
-      ),
-    ])
-
-    return res.json({ message: '已發起決選投票' })
-  } catch (error) {
-    console.error('startTiebreak 錯誤：', error)
-    return res.status(500).json({ message: '伺服器錯誤' })
-  }
-}
-
-export async function submitTiebreakVote(req, res) {
-  const { id } = req.params
-  const userId = req.user.userId
-  const { candidateSlotId } = req.body
-
-  try {
-    const activity = await prisma.activity.findUnique({
-      where: { id },
-      include: {
-        candidateSlots: { include: { availabilities: true } },
-        participants: { where: { status: 'joined' } },
-      },
-    })
-
-    if (!activity) return res.status(404).json({ message: '活動不存在' })
-    if (activity.status !== 'tiebreaking') return res.status(400).json({ message: '此活動目前不在決選投票階段' })
-
-    const isParticipant = activity.participants.some((p) => p.user_id === userId)
-    if (!isParticipant) return res.status(403).json({ message: '你不是此活動的參與者' })
-    if (!candidateSlotId) return res.status(400).json({ message: '請選擇一個候選時段' })
-
-    const joinedCount = activity.participants.length
-    const availabilities = activity.candidateSlots.flatMap((s) => s.availabilities)
-    const { leaders } = getLeaderSlots(activity.candidateSlots, availabilities, joinedCount)
-    if (!leaders.some((s) => s.id === candidateSlotId)) {
-      return res.status(400).json({ message: '此候選時段不在決選名單中' })
-    }
-
-    await prisma.activityTiebreakVote.upsert({
-      where: { activity_id_user_id: { activity_id: id, user_id: userId } },
-      create: { activity_id: id, candidate_slot_id: candidateSlotId, user_id: userId },
-      update: { candidate_slot_id: candidateSlotId },
-    })
-
-    return res.json({ message: '決選投票成功' })
-  } catch (error) {
-    console.error('submitTiebreakVote 錯誤：', error)
     return res.status(500).json({ message: '伺服器錯誤' })
   }
 }
@@ -556,19 +548,30 @@ export async function cancelActivity(req, res) {
 
     const notifyTargets = activity.participants.filter((p) => p.user_id !== userId)
 
-    await prisma.$transaction([
-      prisma.activity.update({ where: { id }, data: { status: 'cancelled' } }),
-      ...notifyTargets.map((p) =>
-        prisma.notification.create({
-          data: {
+    const won = await prisma.$transaction(async (tx) => {
+      const { count } = await tx.activity.updateMany({
+        where: { id, status: activity.status },
+        data: { status: 'cancelled' },
+      })
+      if (count === 0) return false
+
+      if (notifyTargets.length > 0) {
+        await tx.notification.createMany({
+          data: notifyTargets.map((p) => ({
             user_id: p.user_id,
             type: 'activity_cancelled',
             reference_id: id,
             reference_type: 'activity',
-          },
+          })),
         })
-      ),
-    ])
+      }
+
+      return true
+    })
+
+    if (!won) {
+      return res.status(409).json({ message: '此活動狀態已被異動，請重新整理後再試' })
+    }
 
     return res.json({ message: '活動已取消' })
   } catch (error) {
@@ -618,7 +621,7 @@ export async function cancelJoin(req, res) {
 
 // ── helpers ──────────────────────────────────────────────
 
-// 計算候選時段中支持人數最高的一組（可能並列多筆）；votes 可以是 ActivityAvailability 或 ActivityTiebreakVote
+// 計算候選時段中支持人數最高的一組（可能並列多筆）
 function getLeaderSlots(candidateSlots, votes, totalParticipants) {
   const counts = candidateSlots.map((slot) => ({
     slot,
@@ -633,11 +636,21 @@ function getLeaderSlots(candidateSlots, votes, totalParticipants) {
   }
 }
 
+// 投票制活動達到成團判定條件時（到期或人數已達 participant_target）決定要直接定案還是交給建立者/決選投票決定
+function decideFormationOutcome(candidateSlots, votes, totalParticipants) {
+  const { leaders, isUnanimous } = getLeaderSlots(candidateSlots, votes, totalParticipants)
+  return isUnanimous ? { status: 'confirmed', winningSlot: leaders[0] } : { status: 'voting', winningSlot: null }
+}
+
 function formatCard(act, userId) {
   const sched = act.schedule
-  const displaySlot = sched?.confirmedSlot ?? (!sched?.requires_voting ? act.candidateSlots[0] : null)
+  const confirmedSlot = sched?.confirmedSlot ?? null
+  const displaySlot = confirmedSlot ?? (!sched?.requires_voting ? act.candidateSlots[0] : null)
 
   let date = ''
+  // date_iso 只在活動已成團（有 confirmedSlot）時才給值，前端行事曆只依此欄位渲染，
+  // 避免情境一（免投票）在 recruiting 階段就被 candidateSlots[0] 誤判成已成團而提前上行事曆
+  let dateIso = confirmedSlot ? formatISODate(confirmedSlot.slot_start) : null
   let time = ''
   if (displaySlot) {
     date = formatShortDate(displaySlot.slot_start)
@@ -654,6 +667,9 @@ function formatCard(act, userId) {
     is_creator: act.creator_id === userId,
     has_joined: act.participants.some((p) => p.user_id === userId),
     date,
+    date_iso: dateIso,
+    // 供前端在同一天有多筆已成團活動時，依實際開始時間排序用；未成團一律為 null
+    confirmed_start: confirmedSlot ? confirmedSlot.slot_start : null,
     time,
     participants: act.participants.slice(0, 5).map((p) => ({
       id: p.user_id,
@@ -666,6 +682,13 @@ function formatCard(act, userId) {
 
 function formatShortDate(date) {
   return `${date.getMonth() + 1}/${date.getDate()}`
+}
+
+function formatISODate(date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 function formatTime(date) {
