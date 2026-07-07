@@ -13,6 +13,8 @@ import notificationRoutes from "./routes/notifications.js";
 
 const app = express();
 
+app.set("trust proxy", 1);
+
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || '').split(',').map(o => o.trim()).filter(Boolean)
 
 app.use(cors({
