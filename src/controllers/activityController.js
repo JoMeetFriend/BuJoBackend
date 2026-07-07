@@ -461,7 +461,7 @@ export async function confirmFormation(req, res) {
       if (activity.status !== 'recruiting') return res.status(400).json({ message: '此活動狀態不允許確認成團' })
       winningSlot = activity.candidateSlots[0]
     } else {
-      if (activity.status !== 'voting' && activity.status !== 'tiebreaking') {
+      if (activity.status !== 'recruiting' && activity.status !== 'voting' && activity.status !== 'tiebreaking') {
         return res.status(400).json({ message: '此活動狀態不允許確認成團' })
       }
       if (!candidateSlotId) return res.status(400).json({ message: '請選擇要確認的候選時段' })

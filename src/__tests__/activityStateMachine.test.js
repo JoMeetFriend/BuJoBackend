@@ -368,7 +368,7 @@ describe('confirmFormation - voting/tiebreaking 合法轉移到 confirmed', () =
     expect(res.json).toHaveBeenCalledWith({ message: '此活動狀態已被異動，請重新整理後再試' })
   })
 
-  it.each(['recruiting', 'cancelled'])('投票制活動在 %s 狀態不能確認成團', async (status) => {
+  it.each(['confirmed', 'cancelled'])('投票制活動在 %s 狀態不能確認成團', async (status) => {
     prisma.activity.findUnique.mockResolvedValue(
       makeActivity({ status, schedule: { requires_voting: true, deadline_at: new Date(), confirmedSlot: null } }),
     )
@@ -380,7 +380,7 @@ describe('confirmFormation - voting/tiebreaking 合法轉移到 confirmed', () =
     expect(res.json).toHaveBeenCalledWith({ message: '此活動狀態不允許確認成團' })
   })
 
-  it.each(['voting', 'tiebreaking'])('投票制活動可以從 %s 確認成團', async (status) => {
+  it.each(['recruiting', 'voting', 'tiebreaking'])('投票制活動可以從 %s 確認成團（建立者可提前手動成團）', async (status) => {
     const slotA = makeSlot('slot-a', { availabilities: [{ candidate_slot_id: 'slot-a' }] })
     prisma.activity.findUnique.mockResolvedValue(
       makeActivity({
