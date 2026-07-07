@@ -715,9 +715,11 @@ function formatCard(act, userId) {
   const displaySlot = sched?.confirmedSlot ?? (!sched?.requires_voting ? act.candidateSlots[0] : null)
 
   let date = ''
+  let dateIso = null
   let time = ''
   if (displaySlot) {
     date = formatShortDate(displaySlot.slot_start)
+    dateIso = formatISODate(displaySlot.slot_start)
     time = displaySlot.all_day ? '整天' : `${formatTime(displaySlot.slot_start)} - ${formatTime(displaySlot.slot_end)}`
   } else if (sched?.requires_voting) {
     time = '投票中'
@@ -731,6 +733,7 @@ function formatCard(act, userId) {
     is_creator: act.creator_id === userId,
     has_joined: act.participants.some((p) => p.user_id === userId),
     date,
+    date_iso: dateIso,
     time,
     participants: act.participants.slice(0, 5).map((p) => ({
       id: p.user_id,
@@ -743,6 +746,13 @@ function formatCard(act, userId) {
 
 function formatShortDate(date) {
   return `${date.getMonth() + 1}/${date.getDate()}`
+}
+
+function formatISODate(date) {
+  const year = date.getFullYear()
+  const month = String(date.getMonth() + 1).padStart(2, '0')
+  const day = String(date.getDate()).padStart(2, '0')
+  return `${year}-${month}-${day}`
 }
 
 function formatTime(date) {
