@@ -213,54 +213,70 @@ export async function getActivity(req, res) {
 
     if (currentStatus === 'recruiting' && sched && now >= sched.deadline_at) {
       const target = activity.participant_target
+      let winningSlot = null
+      let nextStatus
+
       if (target && joinedCount < target) {
-        await prisma.$transaction([
-          prisma.activity.update({ where: { id }, data: { status: 'cancelled' } }),
-          ...activity.participants.map((p) =>
-            prisma.notification.create({
-              data: { user_id: p.user_id, type: 'activity_cancelled', reference_id: id, reference_type: 'activity' },
-            })
-          ),
-        ])
-        currentStatus = 'cancelled'
+        nextStatus = 'cancelled'
       } else if (!sched.requires_voting) {
-        const winningSlot = activity.candidateSlots[0]
-        await prisma.$transaction([
-          prisma.activity.update({ where: { id }, data: { status: 'confirmed' } }),
-          prisma.activitySchedule.update({ where: { activity_id: id }, data: { confirmed_slot_id: winningSlot.id } }),
-          ...activity.participants.map((p) =>
-            prisma.notification.create({
-              data: { user_id: p.user_id, type: 'activity_confirmed', reference_id: id, reference_type: 'activity' },
-            })
-          ),
-        ])
-        currentStatus = 'confirmed'
-        confirmedSlot = winningSlot
+        nextStatus = 'confirmed'
+        winningSlot = activity.candidateSlots[0]
       } else {
         const availabilities = activity.candidateSlots.flatMap((s) => s.availabilities)
         const { leaders, isUnanimous } = getLeaderSlots(activity.candidateSlots, availabilities, joinedCount)
         if (isUnanimous) {
-          const winningSlot = leaders[0]
-          await prisma.$transaction([
-            prisma.activity.update({ where: { id }, data: { status: 'confirmed' } }),
-            prisma.activitySchedule.update({ where: { activity_id: id }, data: { confirmed_slot_id: winningSlot.id } }),
-            ...activity.participants.map((p) =>
-              prisma.notification.create({
-                data: { user_id: p.user_id, type: 'activity_confirmed', reference_id: id, reference_type: 'activity' },
-              })
-            ),
-          ])
-          currentStatus = 'confirmed'
-          confirmedSlot = winningSlot
+          nextStatus = 'confirmed'
+          winningSlot = leaders[0]
         } else {
-          await prisma.$transaction([
-            prisma.activity.update({ where: { id }, data: { status: 'voting' } }),
-            prisma.notification.create({
-              data: { user_id: activity.creator_id, type: 'time_to_pick', reference_id: id, reference_type: 'activity' },
-            }),
-          ])
-          currentStatus = 'voting'
+          nextStatus = 'voting'
         }
+      }
+
+      // 用 updateMany + where status='recruiting' 當樂觀鎖：GET 可能被併發打到，
+      // 只有真正把狀態從 recruiting 搶下來的那個請求才會建立通知，避免重複通知
+      const won = await prisma.$transaction(async (tx) => {
+        const { count } = await tx.activity.updateMany({
+          where: { id, status: 'recruiting' },
+          data: { status: nextStatus },
+        })
+        if (count === 0) return false
+
+        if (winningSlot) {
+          await tx.activitySchedule.update({
+            where: { activity_id: id },
+            data: { confirmed_slot_id: winningSlot.id },
+          })
+        }
+
+        if (nextStatus === 'voting') {
+          await tx.notification.create({
+            data: { user_id: activity.creator_id, type: 'time_to_pick', reference_id: id, reference_type: 'activity' },
+          })
+        } else {
+          await tx.notification.createMany({
+            data: activity.participants.map((p) => ({
+              user_id: p.user_id,
+              type: nextStatus === 'cancelled' ? 'activity_cancelled' : 'activity_confirmed',
+              reference_id: id,
+              reference_type: 'activity',
+            })),
+          })
+        }
+
+        return true
+      })
+
+      if (won) {
+        currentStatus = nextStatus
+        confirmedSlot = winningSlot ?? confirmedSlot
+      } else {
+        // 沒搶到：代表另一個併發請求已經完成轉換，重新讀取最新狀態避免回傳過期資料
+        const fresh = await prisma.activity.findUnique({
+          where: { id },
+          select: { status: true, schedule: { select: { confirmedSlot: true } } },
+        })
+        currentStatus = fresh.status
+        confirmedSlot = fresh.schedule?.confirmedSlot ?? confirmedSlot
       }
     }
 

@@ -2,12 +2,16 @@ import { jest } from '@jest/globals'
 
 jest.unstable_mockModule('../lib/prisma.js', () => {
   const prisma = {
-    activity: { findUnique: jest.fn(), update: jest.fn() },
+    activity: {
+      findUnique: jest.fn(),
+      update: jest.fn(),
+      updateMany: jest.fn(() => Promise.resolve({ count: 1 })),
+    },
     activitySchedule: { update: jest.fn() },
     activityParticipant: { findUnique: jest.fn(), update: jest.fn(), create: jest.fn() },
     activityAvailability: { createMany: jest.fn(), deleteMany: jest.fn() },
     activityTiebreakVote: { upsert: jest.fn() },
-    notification: { create: jest.fn() },
+    notification: { create: jest.fn(), createMany: jest.fn() },
     $transaction: jest.fn((arg) => (Array.isArray(arg) ? Promise.all(arg) : arg(prisma))),
   }
 
@@ -93,10 +97,34 @@ describe('getActivity - recruiting 到期後的合法自動轉移', () => {
 
     await getActivity(makeReq(), res)
 
-    expect(prisma.activity.update).toHaveBeenCalledWith({
-      where: { id: ACTIVITY_ID },
+    expect(prisma.activity.updateMany).toHaveBeenCalledWith({
+      where: { id: ACTIVITY_ID, status: 'recruiting' },
       data: { status: 'cancelled' },
     })
+    expect(prisma.notification.createMany).toHaveBeenCalledWith({
+      data: [{ user_id: CREATOR_ID, type: 'activity_cancelled', reference_id: ACTIVITY_ID, reference_type: 'activity' }],
+    })
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({ activity: expect.objectContaining({ status: 'cancelled' }) }),
+    )
+  })
+
+  it('併發請求已搶先把狀態轉為 cancelled 時，不重複建立通知，改讀取最新狀態', async () => {
+    const activity = makeActivity({
+      participant_target: 3,
+      participants: [makeParticipant(CREATOR_ID)],
+      schedule: { requires_voting: false, deadline_at: new Date('2020-01-01T00:00:00Z'), confirmedSlot: null },
+    })
+    prisma.activity.findUnique
+      .mockResolvedValueOnce(activity)
+      .mockResolvedValueOnce({ status: 'cancelled', schedule: { confirmedSlot: null } })
+    prisma.activity.updateMany.mockResolvedValueOnce({ count: 0 })
+    const res = makeRes()
+
+    await getActivity(makeReq(), res)
+
+    expect(prisma.notification.createMany).not.toHaveBeenCalled()
+    expect(prisma.notification.create).not.toHaveBeenCalled()
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({ activity: expect.objectContaining({ status: 'cancelled' }) }),
     )
@@ -113,8 +141,8 @@ describe('getActivity - recruiting 到期後的合法自動轉移', () => {
 
     await getActivity(makeReq(), res)
 
-    expect(prisma.activity.update).toHaveBeenCalledWith({
-      where: { id: ACTIVITY_ID },
+    expect(prisma.activity.updateMany).toHaveBeenCalledWith({
+      where: { id: ACTIVITY_ID, status: 'recruiting' },
       data: { status: 'confirmed' },
     })
     expect(prisma.activitySchedule.update).toHaveBeenCalledWith({
@@ -138,8 +166,8 @@ describe('getActivity - recruiting 到期後的合法自動轉移', () => {
 
     await getActivity(makeReq(), res)
 
-    expect(prisma.activity.update).toHaveBeenCalledWith({
-      where: { id: ACTIVITY_ID },
+    expect(prisma.activity.updateMany).toHaveBeenCalledWith({
+      where: { id: ACTIVITY_ID, status: 'recruiting' },
       data: { status: 'confirmed' },
     })
     expect(prisma.activitySchedule.update).toHaveBeenCalledWith({
@@ -161,8 +189,8 @@ describe('getActivity - recruiting 到期後的合法自動轉移', () => {
 
     await getActivity(makeReq(), res)
 
-    expect(prisma.activity.update).toHaveBeenCalledWith({
-      where: { id: ACTIVITY_ID },
+    expect(prisma.activity.updateMany).toHaveBeenCalledWith({
+      where: { id: ACTIVITY_ID, status: 'recruiting' },
       data: { status: 'voting' },
     })
     expect(prisma.notification.create).toHaveBeenCalledWith({
@@ -180,6 +208,7 @@ describe('getActivity - recruiting 到期後的合法自動轉移', () => {
     await getActivity(makeReq(), res)
 
     expect(prisma.activity.update).not.toHaveBeenCalled()
+    expect(prisma.activity.updateMany).not.toHaveBeenCalled()
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({ activity: expect.objectContaining({ status: 'recruiting' }) }),
     )
