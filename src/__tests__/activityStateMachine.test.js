@@ -326,6 +326,162 @@ describe('joinActivity - 只能報名 recruiting 中的活動', () => {
   })
 })
 
+describe('joinActivity - 報名後人數達標，立即判定成團（不用等到期）', () => {
+  it('情境一（免投票）達標時直接成團並通知其他參與者', async () => {
+    prisma.activity.findUnique.mockResolvedValue(
+      makeActivity({
+        status: 'recruiting',
+        participant_target: 2,
+        participants: [makeParticipant(CREATOR_ID)],
+        candidateSlots: [makeSlot('slot-1')],
+        schedule: { requires_voting: false, deadline_at: new Date('2099-01-01T00:00:00Z'), confirmedSlot: null },
+      }),
+    )
+    prisma.activityParticipant.findUnique.mockResolvedValue(null)
+    const res = makeRes()
+
+    await joinActivity(makeReq({ userId: PARTICIPANT_ID }), res)
+
+    expect(prisma.activity.update).toHaveBeenCalledWith({ where: { id: ACTIVITY_ID }, data: { status: 'confirmed' } })
+    expect(prisma.activitySchedule.update).toHaveBeenCalledWith({
+      where: { activity_id: ACTIVITY_ID },
+      data: { confirmed_slot_id: 'slot-1' },
+    })
+    expect(prisma.notification.createMany).toHaveBeenCalledWith({
+      data: [{ user_id: CREATOR_ID, type: 'activity_confirmed', reference_id: ACTIVITY_ID, reference_type: 'activity' }],
+    })
+    expect(res.json).toHaveBeenCalledWith({ message: '報名成功' })
+  })
+
+  it('投票制達標且全員一致時直接成團', async () => {
+    const slotA = makeSlot('slot-a', { availabilities: [{ candidate_slot_id: 'slot-a', user_id: CREATOR_ID }] })
+    const slotB = makeSlot('slot-b', { availabilities: [] })
+    prisma.activity.findUnique.mockResolvedValue(
+      makeActivity({
+        status: 'recruiting',
+        participant_target: 2,
+        participants: [makeParticipant(CREATOR_ID)],
+        candidateSlots: [slotA, slotB],
+        schedule: { requires_voting: true, deadline_at: new Date('2099-01-01T00:00:00Z'), confirmedSlot: null },
+      }),
+    )
+    prisma.activityParticipant.findUnique.mockResolvedValue(null)
+    const res = makeRes()
+
+    await joinActivity(makeReq({ userId: PARTICIPANT_ID, body: { candidateSlotIds: ['slot-a'] } }), res)
+
+    expect(prisma.activity.update).toHaveBeenCalledWith({ where: { id: ACTIVITY_ID }, data: { status: 'confirmed' } })
+    expect(prisma.activitySchedule.update).toHaveBeenCalledWith({
+      where: { activity_id: ACTIVITY_ID },
+      data: { confirmed_slot_id: 'slot-a' },
+    })
+    expect(prisma.notification.createMany).toHaveBeenCalledWith({
+      data: [{ user_id: CREATOR_ID, type: 'activity_confirmed', reference_id: ACTIVITY_ID, reference_type: 'activity' }],
+    })
+  })
+
+  it('投票制達標但未達成共識時進入 voting 並通知建立者去選', async () => {
+    const slotA = makeSlot('slot-a', { availabilities: [{ candidate_slot_id: 'slot-a', user_id: CREATOR_ID }] })
+    const slotB = makeSlot('slot-b', { availabilities: [] })
+    prisma.activity.findUnique.mockResolvedValue(
+      makeActivity({
+        status: 'recruiting',
+        participant_target: 2,
+        participants: [makeParticipant(CREATOR_ID)],
+        candidateSlots: [slotA, slotB],
+        schedule: { requires_voting: true, deadline_at: new Date('2099-01-01T00:00:00Z'), confirmedSlot: null },
+      }),
+    )
+    prisma.activityParticipant.findUnique.mockResolvedValue(null)
+    const res = makeRes()
+
+    await joinActivity(makeReq({ userId: PARTICIPANT_ID, body: { candidateSlotIds: ['slot-b'] } }), res)
+
+    expect(prisma.activity.update).toHaveBeenCalledWith({ where: { id: ACTIVITY_ID }, data: { status: 'voting' } })
+    expect(prisma.activitySchedule.update).not.toHaveBeenCalled()
+    expect(prisma.notification.create).toHaveBeenCalledWith({
+      data: { user_id: CREATOR_ID, type: 'time_to_pick', reference_id: ACTIVITY_ID, reference_type: 'activity' },
+    })
+  })
+
+  it('未設定 participant_target 時，報名不會觸發成團判定', async () => {
+    prisma.activity.findUnique.mockResolvedValue(
+      makeActivity({
+        status: 'recruiting',
+        participant_target: null,
+        candidateSlots: [makeSlot('slot-1')],
+        schedule: { requires_voting: false, deadline_at: new Date('2099-01-01T00:00:00Z'), confirmedSlot: null },
+      }),
+    )
+    prisma.activityParticipant.findUnique.mockResolvedValue(null)
+    const res = makeRes()
+
+    await joinActivity(makeReq({ userId: PARTICIPANT_ID }), res)
+
+    expect(prisma.activity.update).not.toHaveBeenCalled()
+    expect(res.json).toHaveBeenCalledWith({ message: '報名成功' })
+  })
+})
+
+describe('getActivity - candidate_slots 附上目前使用者自己的勾選狀態', () => {
+  it('回傳的 candidate_slots 依目前使用者是否已在該時段留下 availability 標記 is_selected', async () => {
+    const slotA = makeSlot('slot-a', { availabilities: [{ candidate_slot_id: 'slot-a', user_id: PARTICIPANT_ID }] })
+    const slotB = makeSlot('slot-b', { availabilities: [{ candidate_slot_id: 'slot-b', user_id: CREATOR_ID }] })
+    const activity = makeActivity({
+      candidateSlots: [slotA, slotB],
+      participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)],
+      schedule: { requires_voting: true, deadline_at: new Date('2099-01-01T00:00:00Z'), confirmedSlot: null },
+    })
+    prisma.activity.findUnique.mockResolvedValue(activity)
+    const res = makeRes()
+
+    await getActivity(makeReq({ userId: PARTICIPANT_ID }), res)
+
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activity: expect.objectContaining({
+          candidate_slots: [
+            expect.objectContaining({ id: 'slot-a', is_selected: true }),
+            expect.objectContaining({ id: 'slot-b', is_selected: false }),
+          ],
+        }),
+      }),
+    )
+  })
+
+  it('tiebreaking 狀態下 decision_candidates 依目前使用者的決選投票標記 is_selected', async () => {
+    const slotA = makeSlot('slot-a', {
+      availabilities: [{ candidate_slot_id: 'slot-a' }],
+      tiebreakVotes: [{ candidate_slot_id: 'slot-a', user_id: PARTICIPANT_ID }],
+    })
+    const slotB = makeSlot('slot-b', {
+      availabilities: [{ candidate_slot_id: 'slot-b' }],
+      tiebreakVotes: [{ candidate_slot_id: 'slot-b', user_id: CREATOR_ID }],
+    })
+    const activity = makeActivity({
+      status: 'tiebreaking',
+      candidateSlots: [slotA, slotB],
+      participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)],
+      schedule: { requires_voting: true, deadline_at: new Date('2020-01-01T00:00:00Z'), confirmedSlot: null },
+    })
+    prisma.activity.findUnique.mockResolvedValue(activity)
+    const res = makeRes()
+
+    await getActivity(makeReq({ userId: PARTICIPANT_ID }), res)
+
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activity: expect.objectContaining({
+          decision_candidates: [
+            expect.objectContaining({ id: 'slot-a', is_selected: true }),
+            expect.objectContaining({ id: 'slot-b', is_selected: false }),
+          ],
+        }),
+      }),
+    )
+  })
+})
+
 describe('confirmFormation - voting/tiebreaking 合法轉移到 confirmed', () => {
   it('非創建者不能確認成團 (403)', async () => {
     prisma.activity.findUnique.mockResolvedValue(

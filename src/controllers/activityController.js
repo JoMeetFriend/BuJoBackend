@@ -228,13 +228,9 @@ export async function getActivity(req, res) {
         winningSlot = activity.candidateSlots[0]
       } else {
         const availabilities = activity.candidateSlots.flatMap((s) => s.availabilities)
-        const { leaders, isUnanimous } = getLeaderSlots(activity.candidateSlots, availabilities, joinedCount)
-        if (isUnanimous) {
-          nextStatus = 'confirmed'
-          winningSlot = leaders[0]
-        } else {
-          nextStatus = 'voting'
-        }
+        const outcome = decideFormationOutcome(activity.candidateSlots, availabilities, joinedCount)
+        nextStatus = outcome.status
+        winningSlot = outcome.winningSlot
       }
 
       // 用 updateMany + where status='recruiting' 當樂觀鎖：GET 可能被併發打到，
@@ -306,6 +302,7 @@ export async function getActivity(req, res) {
         slot_start: s.slot_start,
         slot_end: s.slot_end,
         count: tiebreakVotes.filter((v) => v.candidate_slot_id === s.id).length,
+        is_selected: tiebreakVotes.some((v) => v.candidate_slot_id === s.id && v.user_id === userId),
       }))
     }
 
@@ -331,6 +328,7 @@ export async function getActivity(req, res) {
           slot_start: s.slot_start,
           slot_end: s.slot_end,
           all_day: s.all_day,
+          is_selected: s.availabilities.some((a) => a.user_id === userId),
         })),
         decision_candidates: decisionCandidates,
         confirmed_slot: confirmedSlot,
@@ -364,7 +362,7 @@ export async function joinActivity(req, res) {
         include: {
           participants: { where: { status: 'joined' } },
           schedule: true,
-          candidateSlots: true,
+          candidateSlots: { include: { availabilities: true } },
         },
       })
 
@@ -397,7 +395,7 @@ export async function joinActivity(req, res) {
       if (existing?.status === 'joined') return { status: 400, message: '你已報名此活動' }
 
       const newCount = currentCount + 1
-      const notifyCreator = activity.participant_target && newCount >= activity.participant_target
+      const targetReached = !!activity.participant_target && newCount >= activity.participant_target
 
       if (existing) {
         await tx.activityParticipant.update({
@@ -414,10 +412,36 @@ export async function joinActivity(req, res) {
         await tx.activityAvailability.createMany({ data: availabilityData, skipDuplicates: true })
       }
 
-      if (notifyCreator) {
-        await tx.notification.create({
-          data: { user_id: activity.creator_id, type: 'formation_ready', reference_id: id, reference_type: 'activity' },
-        })
+      // 人數一達標就立刻判定：免投票直接成團；投票制則交給目前票數決定直接成團或進入 voting 讓建立者選
+      if (targetReached) {
+        const outcome = requiresVoting
+          ? decideFormationOutcome(
+              activity.candidateSlots,
+              [...activity.candidateSlots.flatMap((s) => s.availabilities), ...availabilityData],
+              newCount,
+            )
+          : { status: 'confirmed', winningSlot: activity.candidateSlots[0] }
+
+        await tx.activity.update({ where: { id }, data: { status: outcome.status } })
+
+        if (outcome.status === 'confirmed') {
+          await tx.activitySchedule.update({
+            where: { activity_id: id },
+            data: { confirmed_slot_id: outcome.winningSlot.id },
+          })
+          await tx.notification.createMany({
+            data: activity.participants.map((p) => ({
+              user_id: p.user_id,
+              type: 'activity_confirmed',
+              reference_id: id,
+              reference_type: 'activity',
+            })),
+          })
+        } else {
+          await tx.notification.create({
+            data: { user_id: activity.creator_id, type: 'time_to_pick', reference_id: id, reference_type: 'activity' },
+          })
+        }
       }
 
       return null
@@ -709,6 +733,12 @@ function getLeaderSlots(candidateSlots, votes, totalParticipants) {
     maxCount,
     isUnanimous: leaders.length === 1 && maxCount > 0 && maxCount === totalParticipants,
   }
+}
+
+// 投票制活動達到成團判定條件時（到期或人數已達 participant_target）決定要直接定案還是交給建立者/決選投票決定
+function decideFormationOutcome(candidateSlots, votes, totalParticipants) {
+  const { leaders, isUnanimous } = getLeaderSlots(candidateSlots, votes, totalParticipants)
+  return isUnanimous ? { status: 'confirmed', winningSlot: leaders[0] } : { status: 'voting', winningSlot: null }
 }
 
 function formatCard(act, userId) {
