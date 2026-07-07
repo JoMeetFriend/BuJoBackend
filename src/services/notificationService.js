@@ -9,7 +9,6 @@ export const NOTIFICATION_TYPES = {
   ACTIVITY_CANCELLED: "activity_cancelled",
   TIME_TO_PICK: "time_to_pick",
   FORMATION_READY: "formation_ready",
-  TIEBREAK_STARTED: "tiebreak_started",
 };
 
 export const NOTIFICATION_REFERENCE_TYPES = {
@@ -417,8 +416,6 @@ function buildActivityMessage(type, { creatorName, activityTitle }) {
       return `「${activityTitle}」候選時段票數不相上下，請選擇最終時段`;
     case NOTIFICATION_TYPES.FORMATION_READY:
       return `「${activityTitle}」人數已滿，請確認成團`;
-    case NOTIFICATION_TYPES.TIEBREAK_STARTED:
-      return `「${activityTitle}」進入決選投票，請選出最終時段`;
     case NOTIFICATION_TYPES.ACTIVITY_CREATED:
     default:
       return `${creatorName} 建立了新活動：${activityTitle}`;

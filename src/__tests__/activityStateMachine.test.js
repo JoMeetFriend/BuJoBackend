@@ -12,7 +12,6 @@ jest.unstable_mockModule('../lib/prisma.js', () => {
     activitySchedule: { update: jest.fn() },
     activityParticipant: { findUnique: jest.fn(), update: jest.fn(), create: jest.fn() },
     activityAvailability: { createMany: jest.fn(), deleteMany: jest.fn() },
-    activityTiebreakVote: { upsert: jest.fn() },
     friendship: { findMany: jest.fn(() => Promise.resolve([])) },
     notification: { create: jest.fn(), createMany: jest.fn() },
     $queryRaw: jest.fn(() => Promise.resolve([])),
@@ -28,8 +27,6 @@ const {
   listActivities,
   joinActivity,
   confirmFormation,
-  startTiebreak,
-  submitTiebreakVote,
   cancelActivity,
   cancelJoin,
 } = await import('../controllers/activityController.js')
@@ -55,7 +52,6 @@ function makeSlot(id, overrides = {}) {
     slot_end: new Date('2026-08-01T12:00:00Z'),
     all_day: false,
     availabilities: [],
-    tiebreakVotes: [],
     ...overrides,
   }
 }
@@ -284,7 +280,7 @@ describe('createActivity - 候選時段的 id 對應', () => {
 })
 
 describe('joinActivity - 只能報名 recruiting 中的活動', () => {
-  it.each(['voting', 'tiebreaking', 'confirmed', 'cancelled'])('狀態為 %s 時拒絕報名', async (status) => {
+  it.each(['voting', 'confirmed', 'cancelled'])('狀態為 %s 時拒絕報名', async (status) => {
     prisma.activity.findUnique.mockResolvedValue(makeActivity({ status }))
     const res = makeRes()
 
@@ -448,41 +444,9 @@ describe('getActivity - candidate_slots 附上目前使用者自己的勾選狀�
       }),
     )
   })
-
-  it('tiebreaking 狀態下 decision_candidates 依目前使用者的決選投票標記 is_selected', async () => {
-    const slotA = makeSlot('slot-a', {
-      availabilities: [{ candidate_slot_id: 'slot-a' }],
-      tiebreakVotes: [{ candidate_slot_id: 'slot-a', user_id: PARTICIPANT_ID }],
-    })
-    const slotB = makeSlot('slot-b', {
-      availabilities: [{ candidate_slot_id: 'slot-b' }],
-      tiebreakVotes: [{ candidate_slot_id: 'slot-b', user_id: CREATOR_ID }],
-    })
-    const activity = makeActivity({
-      status: 'tiebreaking',
-      candidateSlots: [slotA, slotB],
-      participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)],
-      schedule: { requires_voting: true, deadline_at: new Date('2020-01-01T00:00:00Z'), confirmedSlot: null },
-    })
-    prisma.activity.findUnique.mockResolvedValue(activity)
-    const res = makeRes()
-
-    await getActivity(makeReq({ userId: PARTICIPANT_ID }), res)
-
-    expect(res.json).toHaveBeenCalledWith(
-      expect.objectContaining({
-        activity: expect.objectContaining({
-          decision_candidates: [
-            expect.objectContaining({ id: 'slot-a', is_selected: true }),
-            expect.objectContaining({ id: 'slot-b', is_selected: false }),
-          ],
-        }),
-      }),
-    )
-  })
 })
 
-describe('confirmFormation - voting/tiebreaking 合法轉移到 confirmed', () => {
+describe('confirmFormation - voting 合法轉移到 confirmed', () => {
   it('非創建者不能確認成團 (403)', async () => {
     prisma.activity.findUnique.mockResolvedValue(
       makeActivity({ status: 'voting', schedule: { requires_voting: true, deadline_at: new Date(), confirmedSlot: null } }),
@@ -561,7 +525,7 @@ describe('confirmFormation - voting/tiebreaking 合法轉移到 confirmed', () =
     expect(res.json).toHaveBeenCalledWith({ message: '此活動狀態不允許確認成團' })
   })
 
-  it.each(['recruiting', 'voting', 'tiebreaking'])('投票制活動可以從 %s 確認成團（建立者可提前手動成團）', async (status) => {
+  it.each(['recruiting', 'voting'])('投票制活動可以從 %s 確認成團（建立者可提前手動成團）', async (status) => {
     const slotA = makeSlot('slot-a', { availabilities: [{ candidate_slot_id: 'slot-a' }] })
     prisma.activity.findUnique.mockResolvedValue(
       makeActivity({
@@ -602,102 +566,6 @@ describe('confirmFormation - voting/tiebreaking 合法轉移到 confirmed', () =
   })
 })
 
-describe('startTiebreak - 只有 voting 可以合法轉移到 tiebreaking', () => {
-  it('非創建者不能發起決選投票 (403)', async () => {
-    prisma.activity.findUnique.mockResolvedValue(makeActivity({ status: 'voting' }))
-    const res = makeRes()
-
-    await startTiebreak(makeReq({ userId: PARTICIPANT_ID }), res)
-
-    expect(res.status).toHaveBeenCalledWith(403)
-  })
-
-  it.each(['recruiting', 'tiebreaking', 'confirmed', 'cancelled'])(
-    '狀態為 %s 時不能發起決選投票',
-    async (status) => {
-      prisma.activity.findUnique.mockResolvedValue(makeActivity({ status }))
-      const res = makeRes()
-
-      await startTiebreak(makeReq(), res)
-
-      expect(res.status).toHaveBeenCalledWith(400)
-      expect(res.json).toHaveBeenCalledWith({ message: '此活動狀態不允許發起決選投票' })
-    },
-  )
-
-  it('voting 狀態可以發起決選投票並通知其他參與者', async () => {
-    prisma.activity.findUnique.mockResolvedValue(
-      makeActivity({
-        status: 'voting',
-        participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)],
-      }),
-    )
-    const res = makeRes()
-
-    await startTiebreak(makeReq(), res)
-
-    expect(prisma.activity.updateMany).toHaveBeenCalledWith({
-      where: { id: ACTIVITY_ID, status: 'voting' },
-      data: { status: 'tiebreaking' },
-    })
-    expect(prisma.notification.createMany).toHaveBeenCalledWith({
-      data: [{ user_id: PARTICIPANT_ID, type: 'tiebreak_started', reference_id: ACTIVITY_ID, reference_type: 'activity' }],
-    })
-  })
-
-  it('已被其他請求搶先發起決選投票時回傳 409，不會重複建立通知', async () => {
-    prisma.activity.findUnique.mockResolvedValue(
-      makeActivity({
-        status: 'voting',
-        participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)],
-      }),
-    )
-    prisma.activity.updateMany.mockResolvedValueOnce({ count: 0 })
-    const res = makeRes()
-
-    await startTiebreak(makeReq(), res)
-
-    expect(prisma.notification.createMany).not.toHaveBeenCalled()
-    expect(res.status).toHaveBeenCalledWith(409)
-    expect(res.json).toHaveBeenCalledWith({ message: '此活動狀態已被異動，請重新整理後再試' })
-  })
-})
-
-describe('submitTiebreakVote - 只能在 tiebreaking 狀態投票', () => {
-  it.each(['recruiting', 'voting', 'confirmed', 'cancelled'])('狀態為 %s 時拒絕決選投票', async (status) => {
-    prisma.activity.findUnique.mockResolvedValue(
-      makeActivity({ status, participants: [makeParticipant(PARTICIPANT_ID)] }),
-    )
-    const res = makeRes()
-
-    await submitTiebreakVote(makeReq({ body: { candidateSlotId: 'slot-1' }, userId: PARTICIPANT_ID }), res)
-
-    expect(res.status).toHaveBeenCalledWith(400)
-    expect(res.json).toHaveBeenCalledWith({ message: '此活動目前不在決選投票階段' })
-  })
-
-  it('tiebreaking 狀態下參與者可以投票', async () => {
-    const slotA = makeSlot('slot-a', { availabilities: [{ candidate_slot_id: 'slot-a' }] })
-    prisma.activity.findUnique.mockResolvedValue(
-      makeActivity({
-        status: 'tiebreaking',
-        candidateSlots: [slotA],
-        participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)],
-      }),
-    )
-    const res = makeRes()
-
-    await submitTiebreakVote(makeReq({ body: { candidateSlotId: 'slot-a' }, userId: PARTICIPANT_ID }), res)
-
-    expect(prisma.activityTiebreakVote.upsert).toHaveBeenCalledWith({
-      where: { activity_id_user_id: { activity_id: ACTIVITY_ID, user_id: PARTICIPANT_ID } },
-      create: { activity_id: ACTIVITY_ID, candidate_slot_id: 'slot-a', user_id: PARTICIPANT_ID },
-      update: { candidate_slot_id: 'slot-a' },
-    })
-    expect(res.json).toHaveBeenCalledWith({ message: '決選投票成功' })
-  })
-})
-
 describe('cancelActivity - confirmed/cancelled 是終止狀態，不可再取消', () => {
   it('非創建者不能取消活動 (403)', async () => {
     prisma.activity.findUnique.mockResolvedValue(makeActivity({ status: 'recruiting' }))
@@ -718,7 +586,7 @@ describe('cancelActivity - confirmed/cancelled 是終止狀態，不可再取消
     expect(res.json).toHaveBeenCalledWith({ message: '此活動無法取消' })
   })
 
-  it.each(['recruiting', 'voting', 'tiebreaking'])('狀態為 %s 時創建者可以取消活動', async (status) => {
+  it.each(['recruiting', 'voting'])('狀態為 %s 時創建者可以取消活動', async (status) => {
     prisma.activity.findUnique.mockResolvedValue(
       makeActivity({ status, participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)] }),
     )
@@ -755,7 +623,7 @@ describe('cancelActivity - confirmed/cancelled 是終止狀態，不可再取消
 })
 
 describe('cancelJoin - 只能在 recruiting 狀態取消報名', () => {
-  it.each(['voting', 'tiebreaking', 'confirmed', 'cancelled'])('狀態為 %s 時拒絕取消報名', async (status) => {
+  it.each(['voting', 'confirmed', 'cancelled'])('狀態為 %s 時拒絕取消報名', async (status) => {
     prisma.activity.findUnique.mockResolvedValue(makeActivity({ status }))
     const res = makeRes()
 
@@ -818,7 +686,7 @@ describe('listActivities - formatCard 的 date_iso 只在已成團時才給值�
     })
   })
 
-  it.each(['recruiting', 'voting', 'tiebreaking'])(
+  it.each(['recruiting', 'voting'])(
     '情境二三四（投票制）在 %s 狀態、尚未成團時，date_iso 為 null',
     async (status) => {
       const activity = makeActivity({

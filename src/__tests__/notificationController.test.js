@@ -236,7 +236,6 @@ describe("listNotifications", () => {
     ["activity_cancelled", "「週末野餐」已取消"],
     ["time_to_pick", "「週末野餐」候選時段票數不相上下，請選擇最終時段"],
     ["formation_ready", "「週末野餐」人數已滿，請確認成團"],
-    ["tiebreak_started", "「週末野餐」進入決選投票，請選出最終時段"],
   ])("活動通知類型為 %s 時要顯示對應的文案，不是「建立了新活動」", async (type, expectedMessage) => {
     prisma.notification.findMany.mockResolvedValue([
       {
