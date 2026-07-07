@@ -353,65 +353,78 @@ export async function joinActivity(req, res) {
   const { candidateSlotIds } = req.body
 
   try {
-    const activity = await prisma.activity.findUnique({
-      where: { id },
-      include: {
-        participants: { where: { status: 'joined' } },
-        schedule: true,
-        candidateSlots: true,
-      },
+    const outcome = await prisma.$transaction(async (tx) => {
+      // 先鎖住這筆活動的 row，讓同一活動的併發報名請求依序處理，
+      // 避免兩個請求同時讀到「還有名額」而一起插入，導致人數超過 participant_target
+      await tx.$queryRaw`SELECT id FROM activities WHERE id = ${id} FOR UPDATE`
+
+      const activity = await tx.activity.findUnique({
+        where: { id },
+        include: {
+          participants: { where: { status: 'joined' } },
+          schedule: true,
+          candidateSlots: true,
+        },
+      })
+
+      if (!activity) return { status: 404, message: '活動不存在' }
+      if (activity.status !== 'recruiting') return { status: 400, message: '此活動不在揪團中' }
+      if (activity.creator_id === userId) return { status: 400, message: '不能報名自己建立的活動' }
+
+      const requiresVoting = !!activity.schedule?.requires_voting
+      let availabilityData = []
+      if (requiresVoting) {
+        const ids = Array.isArray(candidateSlotIds) ? [...new Set(candidateSlotIds)] : []
+        if (ids.length === 0) {
+          return { status: 400, message: '請選擇至少一個候選時段' }
+        }
+        const validIds = new Set(activity.candidateSlots.map((s) => s.id))
+        if (!ids.every((sid) => validIds.has(sid))) {
+          return { status: 400, message: '候選時段不存在' }
+        }
+        availabilityData = ids.map((candidate_slot_id) => ({ candidate_slot_id, user_id: userId }))
+      }
+
+      const currentCount = activity.participants.length
+      if (activity.participant_target && currentCount >= activity.participant_target) {
+        return { status: 400, message: '活動人數已滿' }
+      }
+
+      const existing = await tx.activityParticipant.findUnique({
+        where: { activity_id_user_id: { activity_id: id, user_id: userId } },
+      })
+      if (existing?.status === 'joined') return { status: 400, message: '你已報名此活動' }
+
+      const newCount = currentCount + 1
+      const notifyCreator = activity.participant_target && newCount >= activity.participant_target
+
+      if (existing) {
+        await tx.activityParticipant.update({
+          where: { id: existing.id },
+          data: { status: 'joined', joined_at: new Date() },
+        })
+      } else {
+        await tx.activityParticipant.create({
+          data: { activity_id: id, user_id: userId },
+        })
+      }
+
+      if (requiresVoting) {
+        await tx.activityAvailability.createMany({ data: availabilityData, skipDuplicates: true })
+      }
+
+      if (notifyCreator) {
+        await tx.notification.create({
+          data: { user_id: activity.creator_id, type: 'formation_ready', reference_id: id, reference_type: 'activity' },
+        })
+      }
+
+      return null
     })
 
-    if (!activity) return res.status(404).json({ message: '活動不存在' })
-    if (activity.status !== 'recruiting') return res.status(400).json({ message: '此活動不在揪團中' })
-    if (activity.creator_id === userId) return res.status(400).json({ message: '不能報名自己建立的活動' })
-
-    const requiresVoting = !!activity.schedule?.requires_voting
-    let availabilityData = []
-    if (requiresVoting) {
-      const ids = Array.isArray(candidateSlotIds) ? [...new Set(candidateSlotIds)] : []
-      if (ids.length === 0) {
-        return res.status(400).json({ message: '請選擇至少一個候選時段' })
-      }
-      const validIds = new Set(activity.candidateSlots.map((s) => s.id))
-      if (!ids.every((sid) => validIds.has(sid))) {
-        return res.status(400).json({ message: '候選時段不存在' })
-      }
-      availabilityData = ids.map((candidate_slot_id) => ({ candidate_slot_id, user_id: userId }))
+    if (outcome) {
+      return res.status(outcome.status).json({ message: outcome.message })
     }
-
-    const currentCount = activity.participants.length
-    if (activity.participant_target && currentCount >= activity.participant_target) {
-      return res.status(400).json({ message: '活動人數已滿' })
-    }
-
-    const existing = await prisma.activityParticipant.findUnique({
-      where: { activity_id_user_id: { activity_id: id, user_id: userId } },
-    })
-    if (existing?.status === 'joined') return res.status(400).json({ message: '你已報名此活動' })
-
-    const newCount = currentCount + 1
-    const notifyCreator = activity.participant_target && newCount >= activity.participant_target
-
-    await prisma.$transaction([
-      existing
-        ? prisma.activityParticipant.update({
-            where: { id: existing.id },
-            data: { status: 'joined', joined_at: new Date() },
-          })
-        : prisma.activityParticipant.create({
-            data: { activity_id: id, user_id: userId },
-          }),
-      ...(requiresVoting
-        ? [prisma.activityAvailability.createMany({ data: availabilityData, skipDuplicates: true })]
-        : []),
-      ...(notifyCreator
-        ? [prisma.notification.create({
-            data: { user_id: activity.creator_id, type: 'formation_ready', reference_id: id, reference_type: 'activity' },
-          })]
-        : []),
-    ])
-
     return res.json({ message: '報名成功' })
   } catch (error) {
     console.error('joinActivity 錯誤：', error)

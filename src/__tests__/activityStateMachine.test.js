@@ -14,6 +14,7 @@ jest.unstable_mockModule('../lib/prisma.js', () => {
     activityTiebreakVote: { upsert: jest.fn() },
     friendship: { findMany: jest.fn(() => Promise.resolve([])) },
     notification: { create: jest.fn(), createMany: jest.fn() },
+    $queryRaw: jest.fn(() => Promise.resolve([])),
     $transaction: jest.fn((arg) => (Array.isArray(arg) ? Promise.all(arg) : arg(prisma))),
   }
 
@@ -279,6 +280,24 @@ describe('joinActivity - 只能報名 recruiting 中的活動', () => {
       data: { activity_id: ACTIVITY_ID, user_id: PARTICIPANT_ID },
     })
     expect(res.json).toHaveBeenCalledWith({ message: '報名成功' })
+  })
+
+  it('已達 participant_target 上限時拒絕報名，且有先鎖住 activity row 避免併發超收', async () => {
+    prisma.activity.findUnique.mockResolvedValue(
+      makeActivity({
+        status: 'recruiting',
+        participant_target: 1,
+        participants: [makeParticipant(CREATOR_ID)],
+      }),
+    )
+    const res = makeRes()
+
+    await joinActivity(makeReq({ userId: PARTICIPANT_ID }), res)
+
+    expect(prisma.$queryRaw).toHaveBeenCalled()
+    expect(prisma.activityParticipant.create).not.toHaveBeenCalled()
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(res.json).toHaveBeenCalledWith({ message: '活動人數已滿' })
   })
 })
 
