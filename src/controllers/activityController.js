@@ -713,14 +713,16 @@ function getLeaderSlots(candidateSlots, votes, totalParticipants) {
 
 function formatCard(act, userId) {
   const sched = act.schedule
-  const displaySlot = sched?.confirmedSlot ?? (!sched?.requires_voting ? act.candidateSlots[0] : null)
+  const confirmedSlot = sched?.confirmedSlot ?? null
+  const displaySlot = confirmedSlot ?? (!sched?.requires_voting ? act.candidateSlots[0] : null)
 
   let date = ''
-  let dateIso = null
+  // date_iso 只在活動已成團（有 confirmedSlot）時才給值，前端行事曆只依此欄位渲染，
+  // 避免情境一（免投票）在 recruiting 階段就被 candidateSlots[0] 誤判成已成團而提前上行事曆
+  let dateIso = confirmedSlot ? formatISODate(confirmedSlot.slot_start) : null
   let time = ''
   if (displaySlot) {
     date = formatShortDate(displaySlot.slot_start)
-    dateIso = formatISODate(displaySlot.slot_start)
     time = displaySlot.all_day ? '整天' : `${formatTime(displaySlot.slot_start)} - ${formatTime(displaySlot.slot_end)}`
   } else if (sched?.requires_voting) {
     time = '投票中'

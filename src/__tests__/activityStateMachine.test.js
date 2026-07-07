@@ -4,6 +4,7 @@ jest.unstable_mockModule('../lib/prisma.js', () => {
   const prisma = {
     activity: {
       findUnique: jest.fn(),
+      findMany: jest.fn(),
       create: jest.fn(),
       update: jest.fn(),
       updateMany: jest.fn(() => Promise.resolve({ count: 1 })),
@@ -24,6 +25,7 @@ jest.unstable_mockModule('../lib/prisma.js', () => {
 const {
   createActivity,
   getActivity,
+  listActivities,
   joinActivity,
   confirmFormation,
   startTiebreak,
@@ -619,5 +621,74 @@ describe('cancelJoin - 只能在 recruiting 狀態取消報名', () => {
       data: { status: 'left' },
     })
     expect(res.json).toHaveBeenCalledWith({ message: '已取消報名' })
+  })
+})
+
+describe('listActivities - formatCard 的 date_iso 只在已成團時才給值（行事曆渲染依據）', () => {
+  it('情境一（免投票）尚未成團時，date_iso 為 null，不應提前上行事曆', async () => {
+    const activity = makeActivity({
+      status: 'recruiting',
+      schedule: { requires_voting: false, deadline_at: new Date('2099-01-01T00:00:00Z'), confirmedSlot: null },
+    })
+    prisma.activity.findMany.mockResolvedValue([activity])
+    const res = makeRes()
+
+    await listActivities(makeReq(), res)
+
+    expect(res.json).toHaveBeenCalledWith({
+      activities: [expect.objectContaining({ status: 'recruiting', date_iso: null })],
+    })
+  })
+
+  it('情境一（免投票）已成團時，date_iso 帶入確認時段', async () => {
+    const confirmedSlot = makeSlot('slot-1')
+    const activity = makeActivity({
+      status: 'confirmed',
+      schedule: { requires_voting: false, deadline_at: new Date('2020-01-01T00:00:00Z'), confirmedSlot },
+    })
+    prisma.activity.findMany.mockResolvedValue([activity])
+    const res = makeRes()
+
+    await listActivities(makeReq(), res)
+
+    expect(res.json).toHaveBeenCalledWith({
+      activities: [expect.objectContaining({ status: 'confirmed', date_iso: '2026-08-01' })],
+    })
+  })
+
+  it.each(['recruiting', 'voting', 'tiebreaking'])(
+    '情境二三四（投票制）在 %s 狀態、尚未成團時，date_iso 為 null',
+    async (status) => {
+      const activity = makeActivity({
+        status,
+        candidateSlots: [makeSlot('slot-a', { availabilities: [{ candidate_slot_id: 'slot-a' }] })],
+        schedule: { requires_voting: true, deadline_at: new Date('2099-01-01T00:00:00Z'), confirmedSlot: null },
+      })
+      prisma.activity.findMany.mockResolvedValue([activity])
+      const res = makeRes()
+
+      await listActivities(makeReq(), res)
+
+      expect(res.json).toHaveBeenCalledWith({
+        activities: [expect.objectContaining({ status, date_iso: null })],
+      })
+    },
+  )
+
+  it('情境二三四（投票制）已成團時，date_iso 帶入確認時段', async () => {
+    const confirmedSlot = makeSlot('slot-a')
+    const activity = makeActivity({
+      status: 'confirmed',
+      candidateSlots: [confirmedSlot],
+      schedule: { requires_voting: true, deadline_at: new Date('2020-01-01T00:00:00Z'), confirmedSlot },
+    })
+    prisma.activity.findMany.mockResolvedValue([activity])
+    const res = makeRes()
+
+    await listActivities(makeReq(), res)
+
+    expect(res.json).toHaveBeenCalledWith({
+      activities: [expect.objectContaining({ status: 'confirmed', date_iso: '2026-08-01' })],
+    })
   })
 })
