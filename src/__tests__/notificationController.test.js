@@ -230,6 +230,41 @@ describe("listNotifications", () => {
       ],
     });
   });
+
+  it.each([
+    ["activity_confirmed", "「週末野餐」已確認成團"],
+    ["activity_cancelled", "「週末野餐」已取消"],
+    ["time_to_pick", "「週末野餐」候選時段票數不相上下，請選擇最終時段"],
+    ["formation_ready", "「週末野餐」人數已滿，請確認成團"],
+    ["tiebreak_started", "「週末野餐」進入決選投票，請選出最終時段"],
+  ])("活動通知類型為 %s 時要顯示對應的文案，不是「建立了新活動」", async (type, expectedMessage) => {
+    prisma.notification.findMany.mockResolvedValue([
+      {
+        id: "notification-5",
+        user_id: "user-b",
+        type,
+        reference_id: "activity-1",
+        reference_type: "activity",
+        is_read: false,
+        created_at: new Date(),
+      },
+    ]);
+    prisma.activity.findUnique.mockResolvedValue({
+      id: "activity-1",
+      title: "週末野餐",
+      status: "voting",
+      creator: { id: "user-a", display_name: "A", avatar_url: null },
+    });
+    const res = makeRes();
+
+    await listNotifications(makeReq({ userId: "user-b" }), res);
+
+    expect(res.json).toHaveBeenCalledWith({
+      notifications: [
+        expect.objectContaining({ type, message: expectedMessage }),
+      ],
+    });
+  });
 });
 
 describe("markRead", () => {
