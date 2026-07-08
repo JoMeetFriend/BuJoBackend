@@ -1,4 +1,13 @@
 node_modules/
 .env
 dist/
+uploads/
 npm-debug.log*
+.spectra/
+openspec/.vector-search.db*
+
+
+# tools
+graphify-out/
+.claude/
+CLAUDE.md

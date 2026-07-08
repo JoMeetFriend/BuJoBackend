@@ -1,0 +1,30 @@
+schema: spec-driven
+
+context: |
+  技術棧：Node.js + Express 4、ES Module、Prisma ORM、PostgreSQL、Jest + Supertest
+  程式碼風格：routes/controllers/services 分層，使用 import/export；需要登入的 API 掛 authenticate middleware；commit 訊息用英文 conventional prefix 加中文描述
+  專案類型：BuJo / Bullet Journal 前端 `/Users/hsiun/Desktop/BuJo` 的後端 API
+  核心功能：local email/password auth、Google ID token login、LINE OAuth login/callback、好友邀請、活動建立/報名/成團/取消、站內通知列表與已讀狀態
+  資料模型：users、user_identities、friendships、activities 與 schedule/invitation/participant/vote/chat、notifications、notification_jobs、notification_preferences、oauth_attempts
+  Auth 規則：local/Google login 會簽發本系統 JWT 並存在 `token` httpOnly cookie；前端請求需使用 `credentials: 'include'`
+  API 規則：Express 掛載 `/api/auth`、`/api/friendships`、`/api/activities`、`/api/users`、`/api/friends`、`/api/notifications`；API contract 需同步更新 `API_DOCS.md`
+  Prisma 規則：schema/table 欄位多為 snake_case；新增或調整 model 時同步 migration、seed、測試與文件；不要把密碼 hash、JWT、完整 identity record 回傳給前端
+  測試策略：目前以 Jest + Supertest 為主，Prisma 多透過 ESM mock 驗證 HTTP contract 與 service 行為；真實 DB 驗證前先確認 `DATABASE_URL` 與 migration 狀態
+# Project context (optional)
+# This is shown to AI when creating artifacts.
+# Add your tech stack, conventions, style guides, domain knowledge, etc.
+# Example:
+#   context: |
+#     Tech stack: TypeScript, React, Node.js
+#     We use conventional commits
+#     Domain: e-commerce platform
+
+# Per-artifact rules (optional)
+# Add custom rules for specific artifacts.
+# Example:
+#   rules:
+#     proposal:
+#       - Keep proposals under 500 words
+#       - Always include a "Non-goals" section
+#     tasks:
+#       - Break tasks into chunks of max 2 hours
