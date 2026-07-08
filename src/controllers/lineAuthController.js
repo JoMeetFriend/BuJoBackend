@@ -12,13 +12,23 @@ import { signToken } from '../lib/jwt.js'
 const FRONTEND_URL = () => process.env.FRONTEND_URL || 'http://localhost:5173'
 
 export async function lineLogin(req, res) {
-  const url = await createLineAuthorizationUrl()
-  res.redirect(url.toString())
+  try {
+    const url = await createLineAuthorizationUrl()
+    res.redirect(url.toString())
+  } catch (err) {
+    console.error('LINE login error:', err)
+    res.redirect(`${FRONTEND_URL()}/login?error=line_login_failed`)
+  }
 }
 
 export async function lineLink(req, res) {
-  const url = await createLineAuthorizationUrl(req.user.userId)
-  res.redirect(url.toString())
+  try {
+    const url = await createLineAuthorizationUrl(req.user.userId)
+    res.redirect(url.toString())
+  } catch (err) {
+    console.error('LINE link error:', err)
+    res.redirect(`${FRONTEND_URL()}/profile/edit?error=line_link_failed`)
+  }
 }
 
 export async function lineCallback(req, res) {

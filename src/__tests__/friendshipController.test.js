@@ -305,6 +305,38 @@ describe('acceptFriendship', () => {
   })
 })
 
+describe('錯誤處理：資料庫拋出例外時不能讓 request 直接 crash', () => {
+  it('requestFriendship 遇到例外回傳 500，而不是讓 unhandled rejection 拖垮伺服器', async () => {
+    const res = makeRes()
+    prisma.user.findUnique.mockRejectedValue(new Error('db down'))
+
+    await requestFriendship(makeReq({ receiver_id: 'user-b' }, 'user-a'), res)
+
+    expect(res.status).toHaveBeenCalledWith(500)
+    expect(res.json).toHaveBeenCalledWith({ message: '伺服器錯誤' })
+  })
+
+  it('acceptFriendship 遇到例外回傳 500', async () => {
+    const res = makeRes()
+    prisma.friendship.findUnique.mockRejectedValue(new Error('db down'))
+
+    await acceptFriendship({ params: { id: 'friendship-1' }, user: { userId: 'user-b' } }, res)
+
+    expect(res.status).toHaveBeenCalledWith(500)
+    expect(res.json).toHaveBeenCalledWith({ message: '伺服器錯誤' })
+  })
+
+  it('rejectFriendship 遇到例外回傳 500', async () => {
+    const res = makeRes()
+    prisma.friendship.findUnique.mockRejectedValue(new Error('db down'))
+
+    await rejectFriendship({ params: { id: 'friendship-1' }, user: { userId: 'user-b' } }, res)
+
+    expect(res.status).toHaveBeenCalledWith(500)
+    expect(res.json).toHaveBeenCalledWith({ message: '伺服器錯誤' })
+  })
+})
+
 describe('rejectFriendship', () => {
   it('找不到好友邀請回傳 404', async () => {
     const res = makeRes()

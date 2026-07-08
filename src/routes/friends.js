@@ -7,9 +7,5 @@ const router = express.Router();
 router.use(authenticate);
 
 router.get("/", friendController.getFriends);
-router.get("/requests", friendController.getPendingRequests);
-router.post("/request", friendController.requestFriend);
-router.patch("/requests/:id/accept", friendController.acceptFriendRequest);
-router.delete("/requests/:id", friendController.rejectFriendRequest);
 
 export default router;
