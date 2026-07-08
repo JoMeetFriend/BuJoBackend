@@ -212,7 +212,7 @@ const me = await fetch("http://localhost:3000/api/auth/me", {
 
 ### PATCH `/api/users/me/avatar` — 更換目前使用者頭像 🔒
 
-> 需要登入（cookie 中有效的 `token`）。前端需用 `multipart/form-data` 上傳圖片檔，欄位名稱固定為 `avatar`。後端會將圖片存到本機 `/uploads/avatars/`，並把新的 `avatar_url` 寫回使用者資料。
+> 需要登入（cookie 中有效的 `token`）。前端需用 `multipart/form-data` 上傳圖片檔，欄位名稱固定為 `avatar`。後端會將圖片上傳到 Cloudinary，並把新的 `avatar_url` 寫回使用者資料；若使用者原本已有 Cloudinary 頭像，更新成功後會嘗試刪除舊圖。
 
 **Request FormData**
 
@@ -247,7 +247,7 @@ const res = await fetch("http://localhost:3000/api/users/me/avatar", {
   "user": {
     "id": "uuid",
     "display_name": "小明",
-    "avatar_url": "/uploads/avatars/avatar-uuid-1780000000000-random.png"
+    "avatar_url": "https://res.cloudinary.com/demo/image/upload/v1780000000/bujo/avatars/avatar-public-id.png"
   }
 }
 ```
