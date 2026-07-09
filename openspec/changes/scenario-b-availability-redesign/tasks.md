@@ -25,14 +25,14 @@
 - [x] 3.10 執行確認失敗 → 實作 → 執行確認通過
 - [x] 3.11 寫失敗測試：`POST /:id/join` 對 `deadline_at < now` 但 `status` 仍是 `recruiting` 的活動回拒絕錯誤、不建立 `ActivityParticipant`，四個情境皆適用（對應規格 Join rejects activities past their deadline，設計決策「`joinActivity` 補上 `deadline_at` 檢查（全情境適用的安全修正）」）
 - [x] 3.12 執行確認失敗 → 實作（加在既有 transaction 最前面的檢查）→ 執行確認通過，並跑一次既有情境一/三/四相關測試確認無回歸
-- [ ] 3.13 Commit
+- [x] 3.13 Commit
 
 ## 4. 重疊排序演算法
 
-- [ ] 4.1 寫失敗測試：新增純函數（例如 `computeRangeRanking(ranges, windowStart, windowEnd, totalParticipants)`），驗證 60 分鐘切格、重疊人數計算、Section 1（完全符合）／Section 2（前 3）分區、平手依時間排序（對應規格 Overlap ranking computation，設計決策「重疊排序演算法：固定基準範圍切 60 分鐘一格，分 Section 1／2 顯示」）
-- [ ] 4.2 執行確認失敗
-- [ ] 4.3 實作純函數
-- [ ] 4.4 執行確認通過，並補上零提交（回傳兩區皆空）、零重疊（Section 1 空、Section 2 顯示最高票）邊界案例測試
+- [x] 4.1 寫失敗測試：新增純函數（例如 `computeRangeRanking(ranges, windowStart, windowEnd, totalParticipants)`），驗證 60 分鐘切格、重疊人數計算、Section 1（完全符合）／Section 2（前 3）分區、平手依時間排序（對應規格 Overlap ranking computation，設計決策「重疊排序演算法：固定基準範圍切 60 分鐘一格，分 Section 1／2 顯示」）
+- [x] 4.2 執行確認失敗
+- [x] 4.3 實作純函數
+- [x] 4.4 執行確認通過，並補上零提交（回傳兩區皆空）、零重疊（Section 1 空、Section 2 顯示最高票）邊界案例測試
 - [ ] 4.5 Commit
 
 ## 5. getActivity：串接排序與 lazy check 新分支

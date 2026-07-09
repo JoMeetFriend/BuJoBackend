@@ -695,6 +695,41 @@ function decideFormationOutcome(candidateSlots, votes, totalParticipants) {
   return isUnanimous ? { status: 'confirmed', winningSlot: leaders[0] } : { status: 'voting', winningSlot: null }
 }
 
+// 情境二重疊排序：以 60 分鐘為間隔切候選格，計算每格有多少人（含建立者，由呼叫端併入 ranges）回報的可用時間涵蓋該格，
+// 分「完全符合」（人數＝總報名人數）／「最多人有空」（前 3，排除完全符合）兩區，同分依時間先後排序
+export function computeRangeRanking(ranges, windowStart, windowEnd, totalParticipants) {
+  const segments = []
+  let segStart = new Date(windowStart)
+  while (segStart < windowEnd) {
+    const segEnd = new Date(Math.min(segStart.getTime() + 60 * 60 * 1000, windowEnd.getTime()))
+    segments.push({ slot_start: segStart, slot_end: segEnd })
+    segStart = segEnd
+  }
+
+  const counted = segments.map((seg) => ({
+    ...seg,
+    count: ranges.filter((r) => r.start < seg.slot_end && r.end > seg.slot_start).length,
+  }))
+
+  const toEntry = (s) => ({
+    id: `temp-${s.slot_start.toISOString()}`,
+    slot_start: s.slot_start,
+    slot_end: s.slot_end,
+    count: s.count,
+  })
+
+  const perfect = counted.filter((s) => s.count > 0 && s.count === totalParticipants)
+  const partial = counted
+    .filter((s) => s.count > 0 && s.count !== totalParticipants)
+    .sort((a, b) => b.count - a.count || a.slot_start - b.slot_start)
+    .slice(0, 3)
+
+  return {
+    perfect_overlap: perfect.map(toEntry),
+    partial_overlap: partial.map(toEntry),
+  }
+}
+
 function formatCard(act, userId) {
   const sched = act.schedule
   const confirmedSlot = sched?.confirmedSlot ?? null
