@@ -563,7 +563,7 @@ export async function getRankedSlots(req, res) {
 export async function confirmFormation(req, res) {
   const { id } = req.params
   const userId = req.user.userId
-  const { candidateSlotId } = req.body
+  const { candidateSlotId, slotStart, slotEnd } = req.body
 
   try {
     const activity = await prisma.activity.findUnique({
@@ -571,6 +571,7 @@ export async function confirmFormation(req, res) {
       include: {
         schedule: true,
         candidateSlots: { include: { availabilities: true } },
+        availabilityRanges: true,
         participants: { where: { status: 'joined' } },
       },
     })
@@ -579,9 +580,34 @@ export async function confirmFormation(req, res) {
     if (activity.creator_id !== userId) return res.status(403).json({ message: '只有創建者可以確認成團' })
 
     const requiresVoting = !!activity.schedule?.requires_voting
+    const isRangeMode = activity.schedule?.availability_mode === 'range'
     let winningSlot
+    let newCandidateSlotData = null
 
-    if (!requiresVoting) {
+    if (isRangeMode) {
+      if (activity.status !== 'recruiting' && activity.status !== 'voting') {
+        return res.status(400).json({ message: '此活動狀態不允許確認成團' })
+      }
+      if (!slotStart || !slotEnd) return res.status(400).json({ message: '請選擇要確認的時段' })
+
+      const sched = activity.schedule
+      const joinedCount = activity.participants.length
+      const windowStart = sched.time_window_start ?? sched.fixed_date
+      const windowEnd = sched.time_window_end ?? new Date(sched.fixed_date.getTime() + 24 * 60 * 60 * 1000)
+      const submittedRanges = activity.availabilityRanges.map((r) => ({ start: r.range_start, end: r.range_end }))
+      const allRanges = [...submittedRanges, { start: windowStart, end: windowEnd }]
+      const ranking = computeRangeRanking(allRanges, windowStart, windowEnd, joinedCount)
+      const candidates = [...ranking.perfect_overlap, ...ranking.partial_overlap]
+
+      const start = new Date(slotStart)
+      const end = new Date(slotEnd)
+      const matched = candidates.find(
+        (c) => c.slot_start.getTime() === start.getTime() && c.slot_end.getTime() === end.getTime(),
+      )
+      if (!matched) return res.status(400).json({ message: '此候選時段不在可確認的名單中' })
+
+      newCandidateSlotData = { slot_start: start, slot_end: end, all_day: false }
+    } else if (!requiresVoting) {
       if (activity.status !== 'recruiting') return res.status(400).json({ message: '此活動狀態不允許確認成團' })
       winningSlot = activity.candidateSlots[0]
     } else {
@@ -607,9 +633,14 @@ export async function confirmFormation(req, res) {
       })
       if (count === 0) return false
 
+      // range 模式在建立活動、recruiting/voting 期間都不建立 ActivityCandidateSlot，只在確認成團的當下才臨時建立這一筆
+      const confirmedSlotId = isRangeMode
+        ? (await tx.activityCandidateSlot.create({ data: { activity_id: id, ...newCandidateSlotData } })).id
+        : winningSlot.id
+
       await tx.activitySchedule.update({
         where: { activity_id: id },
-        data: { confirmed_slot_id: winningSlot.id },
+        data: { confirmed_slot_id: confirmedSlotId },
       })
 
       if (notifyTargets.length > 0) {

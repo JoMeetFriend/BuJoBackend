@@ -427,3 +427,99 @@ describe('getActivity - 情境二零提交自動取消', () => {
     })
   })
 })
+
+describe('confirmFormation - range 模式確認成團', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    prisma.$transaction.mockImplementation((arg) => (Array.isArray(arg) ? Promise.all(arg) : arg(prisma)))
+    prisma.activity.updateMany.mockResolvedValue({ count: 1 })
+  })
+
+  it('帶 {slotStart, slotEnd} 命中候選格時，建立一筆 ActivityCandidateSlot 並寫入 confirmed_slot_id', async () => {
+    const activity = makeRangeActivity({
+      status: 'voting',
+      participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)],
+      availabilityRanges: [
+        {
+          user_id: PARTICIPANT_ID,
+          range_start: new Date(2026, 7, 1, 18, 0),
+          range_end: new Date(2026, 7, 1, 20, 0),
+        },
+      ],
+      schedule: {
+        requires_voting: true,
+        availability_mode: 'range',
+        deadline_at: new Date('2020-01-01T00:00:00Z'),
+        fixed_date: new Date(2026, 7, 1),
+        time_window_start: new Date(2026, 7, 1, 18, 0),
+        time_window_end: new Date(2026, 7, 1, 20, 0),
+        vote_deadline_at: new Date('2099-01-01T00:00:00Z'),
+        confirmedSlot: null,
+      },
+    })
+    prisma.activity.findUnique.mockResolvedValue(activity)
+    prisma.activityCandidateSlot.create.mockResolvedValue({
+      id: 'new-slot-1',
+      slot_start: new Date(2026, 7, 1, 18, 0),
+      slot_end: new Date(2026, 7, 1, 19, 0),
+    })
+    const res = makeRes()
+
+    await confirmFormation(
+      makeReq({
+        body: { slotStart: new Date(2026, 7, 1, 18, 0), slotEnd: new Date(2026, 7, 1, 19, 0) },
+      }),
+      res,
+    )
+
+    expect(prisma.activityCandidateSlot.create).toHaveBeenCalledWith({
+      data: {
+        activity_id: ACTIVITY_ID,
+        slot_start: new Date(2026, 7, 1, 18, 0),
+        slot_end: new Date(2026, 7, 1, 19, 0),
+        all_day: false,
+      },
+    })
+    expect(prisma.activitySchedule.update).toHaveBeenCalledWith({
+      where: { activity_id: ACTIVITY_ID },
+      data: { confirmed_slot_id: 'new-slot-1' },
+    })
+    expect(res.json).toHaveBeenCalledWith({ message: '成團成功' })
+  })
+
+  it('{slotStart, slotEnd} 不在目前 decision_candidates 名單內時回 400、不建立 ActivityCandidateSlot', async () => {
+    const activity = makeRangeActivity({
+      status: 'voting',
+      participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)],
+      availabilityRanges: [
+        {
+          user_id: PARTICIPANT_ID,
+          range_start: new Date(2026, 7, 1, 18, 0),
+          range_end: new Date(2026, 7, 1, 19, 0),
+        },
+      ],
+      schedule: {
+        requires_voting: true,
+        availability_mode: 'range',
+        deadline_at: new Date('2020-01-01T00:00:00Z'),
+        fixed_date: new Date(2026, 7, 1),
+        time_window_start: new Date(2026, 7, 1, 18, 0),
+        time_window_end: new Date(2026, 7, 1, 20, 0),
+        vote_deadline_at: new Date('2099-01-01T00:00:00Z'),
+        confirmedSlot: null,
+      },
+    })
+    prisma.activity.findUnique.mockResolvedValue(activity)
+    const res = makeRes()
+
+    await confirmFormation(
+      makeReq({
+        body: { slotStart: new Date(2026, 7, 1, 20, 0), slotEnd: new Date(2026, 7, 1, 21, 0) },
+      }),
+      res,
+    )
+
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(prisma.activityCandidateSlot.create).not.toHaveBeenCalled()
+  })
+})

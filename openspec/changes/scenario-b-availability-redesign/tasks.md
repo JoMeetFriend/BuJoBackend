@@ -43,14 +43,14 @@
 - [x] 5.4 執行確認失敗 → 實作 → 執行確認通過
 - [x] 5.5 寫失敗測試：`recruiting` 狀態、`range` 模式、未設 `participant_target`、`deadline_at` 已過、且除建立者外無人提交過 `ActivityAvailabilityRange` 時，lazy check 轉為 `cancelled`（對應規格 Zero-submission cancellation without a participant cap，設計決策「情境二零提交自動取消（新增，修正既有缺陷）」）
 - [x] 5.6 執行確認失敗 → 實作 → 執行確認通過，並確認情境一/三/四原有 lazy check 行為不受影響
-- [ ] 5.7 Commit
+- [x] 5.7 Commit
 
 ## 6. confirmFormation：range 模式確認成團
 
-- [ ] 6.1 寫失敗測試：`range` 模式活動呼叫 `confirmFormation` 時改吃 `{ slotStart, slotEnd }`（而非 `candidateSlotId`），臨時建立一筆 `ActivityCandidateSlot` 並寫入 `confirmed_slot_id`（對應規格 Creator confirmation persists the selected slot，設計決策「`confirmed_slot_id` 沿用既有機制，只在確認成團時才建立 `ActivityCandidateSlot`」）
-- [ ] 6.2 執行確認失敗 → 實作 → 執行確認通過
-- [ ] 6.3 寫失敗測試：`{ slotStart, slotEnd }` 不在目前 `decision_candidates` 名單內時回 400、不建立 `ActivityCandidateSlot`
-- [ ] 6.4 執行確認失敗 → 實作 → 執行確認通過
+- [x] 6.1 寫失敗測試：`range` 模式活動呼叫 `confirmFormation` 時改吃 `{ slotStart, slotEnd }`（而非 `candidateSlotId`），臨時建立一筆 `ActivityCandidateSlot` 並寫入 `confirmed_slot_id`（對應規格 Creator confirmation persists the selected slot，設計決策「`confirmed_slot_id` 沿用既有機制，只在確認成團時才建立 `ActivityCandidateSlot`」）
+- [x] 6.2 執行確認失敗 → 實作 → 執行確認通過
+- [x] 6.3 寫失敗測試：`{ slotStart, slotEnd }` 不在目前 `decision_candidates` 名單內時回 400、不建立 `ActivityCandidateSlot`
+- [x] 6.4 執行確認失敗 → 實作 → 執行確認通過
 - [ ] 6.5 Commit
 
 ## 7. 文件與跨庫備註
