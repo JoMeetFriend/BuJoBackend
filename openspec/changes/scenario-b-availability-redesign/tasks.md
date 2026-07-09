@@ -33,16 +33,16 @@
 - [x] 4.2 執行確認失敗
 - [x] 4.3 實作純函數
 - [x] 4.4 執行確認通過，並補上零提交（回傳兩區皆空）、零重疊（Section 1 空、Section 2 顯示最高票）邊界案例測試
-- [ ] 4.5 Commit
+- [x] 4.5 Commit
 
 ## 5. getActivity：串接排序與 lazy check 新分支
 
-- [ ] 5.1 寫失敗測試：`getActivity` 對 `availability_mode: 'range'` 活動回傳 `decision_candidates` 為 `{ perfect_overlap: [...], partial_overlap: [...] }`（對應設計決策「`GET /:id` 的 `decision_candidates` 回傳格式：range 模式改回傳 `{perfect_overlap, partial_overlap}`」），每筆項目含 `temp-` 前綴的識別碼、`slot_start`、`slot_end`、`count`，使用 `computeRangeRanking()`，並將建立者視為永遠有空（對應規格 Overlap ranking computation 的 creator always available 情境）
-- [ ] 5.2 執行確認失敗 → 實作 → 執行確認通過
-- [ ] 5.3 寫失敗測試：`voting` 狀態活動的 `vote_deadline_at` 已過且 `confirmed_slot_id` 仍為空時，lazy check 轉為 `cancelled` 並通知所有參與者（對應規格 Vote deadline auto-cancellation，設計決策「`vote_deadline_at` 逾時自動取消（新增，原文件規劃但從未實作）」）
-- [ ] 5.4 執行確認失敗 → 實作 → 執行確認通過
-- [ ] 5.5 寫失敗測試：`recruiting` 狀態、`range` 模式、未設 `participant_target`、`deadline_at` 已過、且除建立者外無人提交過 `ActivityAvailabilityRange` 時，lazy check 轉為 `cancelled`（對應規格 Zero-submission cancellation without a participant cap，設計決策「情境二零提交自動取消（新增，修正既有缺陷）」）
-- [ ] 5.6 執行確認失敗 → 實作 → 執行確認通過，並確認情境一/三/四原有 lazy check 行為不受影響
+- [x] 5.1 寫失敗測試：`getActivity` 對 `availability_mode: 'range'` 活動回傳 `decision_candidates` 為 `{ perfect_overlap: [...], partial_overlap: [...] }`（對應設計決策「`GET /:id` 的 `decision_candidates` 回傳格式：range 模式改回傳 `{perfect_overlap, partial_overlap}`」），每筆項目含 `temp-` 前綴的識別碼、`slot_start`、`slot_end`、`count`，使用 `computeRangeRanking()`，並將建立者視為永遠有空（對應規格 Overlap ranking computation 的 creator always available 情境）
+- [x] 5.2 執行確認失敗 → 實作 → 執行確認通過
+- [x] 5.3 寫失敗測試：`voting` 狀態活動的 `vote_deadline_at` 已過且 `confirmed_slot_id` 仍為空時，lazy check 轉為 `cancelled` 並通知所有參與者（對應規格 Vote deadline auto-cancellation，設計決策「`vote_deadline_at` 逾時自動取消（新增，原文件規劃但從未實作）」）
+- [x] 5.4 執行確認失敗 → 實作 → 執行確認通過
+- [x] 5.5 寫失敗測試：`recruiting` 狀態、`range` 模式、未設 `participant_target`、`deadline_at` 已過、且除建立者外無人提交過 `ActivityAvailabilityRange` 時，lazy check 轉為 `cancelled`（對應規格 Zero-submission cancellation without a participant cap，設計決策「情境二零提交自動取消（新增，修正既有缺陷）」）
+- [x] 5.6 執行確認失敗 → 實作 → 執行確認通過，並確認情境一/三/四原有 lazy check 行為不受影響
 - [ ] 5.7 Commit
 
 ## 6. confirmFormation：range 模式確認成團

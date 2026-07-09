@@ -205,6 +205,7 @@ export async function getActivity(req, res) {
         creator: { select: { id: true, display_name: true, avatar_url: true } },
         schedule: { include: { confirmedSlot: true } },
         candidateSlots: { include: { availabilities: true } },
+        availabilityRanges: true,
         participants: {
           where: { status: 'joined' },
           include: {
@@ -222,6 +223,7 @@ export async function getActivity(req, res) {
     // Lazy 狀態轉換（不用 cron，每次 GET 時觸發）
     const now = new Date()
     const sched = activity.schedule
+    const isRangeMode = sched?.availability_mode === 'range'
     let currentStatus = activity.status
     let confirmedSlot = sched?.confirmedSlot ?? null
     const joinedCount = activity.participants.length
@@ -236,6 +238,13 @@ export async function getActivity(req, res) {
       } else if (!sched.requires_voting) {
         nextStatus = 'confirmed'
         winningSlot = activity.candidateSlots[0]
+      } else if (
+        isRangeMode &&
+        !target &&
+        (activity.availabilityRanges ?? []).filter((r) => r.user_id !== activity.creator_id).length === 0
+      ) {
+        // 情境二專屬：沒設人數上限、到期、且除建立者外無人提交過可用時間 → 直接取消，不進入無意義的 voting
+        nextStatus = 'cancelled'
       } else {
         const availabilities = activity.candidateSlots.flatMap((s) => s.availabilities)
         const outcome = decideFormationOutcome(activity.candidateSlots, availabilities, joinedCount)
@@ -289,20 +298,66 @@ export async function getActivity(req, res) {
         currentStatus = fresh.status
         confirmedSlot = fresh.schedule?.confirmedSlot ?? confirmedSlot
       }
+    } else if (
+      currentStatus === 'voting' &&
+      isRangeMode &&
+      sched.vote_deadline_at &&
+      now >= sched.vote_deadline_at &&
+      !confirmedSlot
+    ) {
+      // 情境二專屬：進入 voting 後若建立者逾期未確認任何時段，lazy check 自動轉為 cancelled
+      const won = await prisma.$transaction(async (tx) => {
+        const { count } = await tx.activity.updateMany({
+          where: { id, status: 'voting' },
+          data: { status: 'cancelled' },
+        })
+        if (count === 0) return false
+
+        await tx.notification.createMany({
+          data: activity.participants.map((p) => ({
+            user_id: p.user_id,
+            type: 'activity_cancelled',
+            reference_id: id,
+            reference_type: 'activity',
+          })),
+        })
+
+        return true
+      })
+
+      if (won) {
+        currentStatus = 'cancelled'
+      } else {
+        const fresh = await prisma.activity.findUnique({
+          where: { id },
+          select: { status: true, schedule: { select: { confirmedSlot: true } } },
+        })
+        currentStatus = fresh.status
+        confirmedSlot = fresh.schedule?.confirmedSlot ?? confirmedSlot
+      }
     }
 
     // 建立者決策階段：附上目前候選/決選的支持人數，方便建立者選擇
     // recruiting 狀態下（投票制、尚未到期）也要附上，讓建立者可以提前手動成團
     let decisionCandidates = null
     if (currentStatus === 'voting' || (currentStatus === 'recruiting' && sched?.requires_voting)) {
-      const availabilities = activity.candidateSlots.flatMap((s) => s.availabilities)
-      const { leaders } = getLeaderSlots(activity.candidateSlots, availabilities, joinedCount)
-      decisionCandidates = leaders.map((s) => ({
-        id: s.id,
-        slot_start: s.slot_start,
-        slot_end: s.slot_end,
-        count: availabilities.filter((a) => a.candidate_slot_id === s.id).length,
-      }))
+      if (isRangeMode) {
+        const windowStart = sched.time_window_start ?? sched.fixed_date
+        const windowEnd = sched.time_window_end ?? new Date(sched.fixed_date.getTime() + 24 * 60 * 60 * 1000)
+        const submittedRanges = activity.availabilityRanges.map((r) => ({ start: r.range_start, end: r.range_end }))
+        // 建立者永遠算「有空」，用一段涵蓋整個基準範圍的虛擬 range 表示，不需要真實資料列
+        const allRanges = [...submittedRanges, { start: windowStart, end: windowEnd }]
+        decisionCandidates = computeRangeRanking(allRanges, windowStart, windowEnd, joinedCount)
+      } else {
+        const availabilities = activity.candidateSlots.flatMap((s) => s.availabilities)
+        const { leaders } = getLeaderSlots(activity.candidateSlots, availabilities, joinedCount)
+        decisionCandidates = leaders.map((s) => ({
+          id: s.id,
+          slot_start: s.slot_start,
+          slot_end: s.slot_end,
+          count: availabilities.filter((a) => a.candidate_slot_id === s.id).length,
+        }))
+      }
     }
 
     const isCreator = activity.creator_id === userId
@@ -321,6 +376,7 @@ export async function getActivity(req, res) {
         has_joined: hasJoined,
         creator: activity.creator,
         requires_voting: sched?.requires_voting ?? false,
+        availability_mode: sched?.availability_mode ?? 'slot',
         deadline_at: sched?.deadline_at ?? null,
         candidate_slots: activity.candidateSlots.map((s) => ({
           id: s.id,
