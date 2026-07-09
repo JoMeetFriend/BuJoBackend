@@ -60,5 +60,5 @@
 
 ## 8. 既有測試回歸確認
 
-- [ ] 8.1 檢查 `src/__tests__/activityStateMachine.test.js` 中涉及情境二（`isVotingB`／`slots`）的既有案例，改寫為對應 range 模式的案例（對應規格 Participant free-form availability reporting）
-- [ ] 8.2 執行整套後端測試套件（`npm test`），確認情境一／三／四無回歸
+- [x] 8.1 檢查 `src/__tests__/activityStateMachine.test.js` 中涉及情境二（`isVotingB`／`slots`）的既有案例，改寫為對應 range 模式的案例（對應規格 Participant free-form availability reporting）
+- [x] 8.2 執行整套後端測試套件（`npm test`），確認情境一／三／四無回歸

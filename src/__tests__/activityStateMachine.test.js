@@ -240,7 +240,7 @@ describe('getActivity - recruiting 到期後的合法自動轉移', () => {
   })
 })
 
-describe('createActivity - 候選時段的 id 對應', () => {
+describe('createActivity - 候選時段的 id 對應（情境三／四共用的候選時段建立邏輯）', () => {
   it('相同 start/end 的候選時段各自對應到不同的 id，不會互相覆蓋', async () => {
     const start = new Date('2026-08-01T01:00:00Z')
     const end = new Date('2026-08-01T02:00:00Z')
@@ -256,11 +256,8 @@ describe('createActivity - 候選時段的 id 對應', () => {
       body: {
         title: '重複時段測試',
         deadline: new Date('2026-07-31T00:00:00Z').toISOString(),
-        singleDate: '2026/08/01',
-        slots: [
-          { startTime: '上午 9:00', endTime: '上午 10:00' },
-          { startTime: '上午 9:00', endTime: '上午 10:00' },
-        ],
+        candidateDates: ['2026/08/01', '2026/08/01'],
+        uniformTime: { startTime: '上午 9:00', endTime: '上午 10:00' },
         creatorSlotIndexes: [0, 1],
       },
     })
