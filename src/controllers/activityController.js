@@ -26,6 +26,9 @@ export async function createActivity(req, res) {
   if (!deadline) {
     return res.status(400).json({ message: '流團時間為必填' })
   }
+  if (new Date(deadline) <= new Date()) {
+    return res.status(400).json({ message: '流團時間已經過去，請調整流團設定或活動時間' })
+  }
 
   let candidateSlotsData
   let scheduleExtra = { availability_mode: 'slot' }
