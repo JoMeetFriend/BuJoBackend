@@ -9,22 +9,22 @@
 - [x] 2.2 執行測試確認失敗
 - [x] 2.3 實作 `createActivity` 情境二分支（判斷條件從「有 slots[]」改為「有 singleDate 且沒有 startDate/candidateDates/dateSlots」；移除 buildVoteSlots 呼叫）
 - [x] 2.4 執行測試確認通過
-- [ ] 2.5 Commit
+- [x] 2.5 Commit
 
 ## 3. joinActivity：range 模式報名與 deadline 安全修正
 
-- [ ] 3.1 寫失敗測試：range 模式活動 `POST /:id/join` 帶 `{ranges: [...]}` 時寫入對應數量的 `ActivityAvailabilityRange`（對應規格 Participant free-form availability reporting）
-- [ ] 3.2 執行確認失敗
-- [ ] 3.3 實作寫入邏輯
-- [ ] 3.4 執行確認通過
-- [ ] 3.5 寫失敗測試：空 `ranges` 陣列回 400、不寫入任何資料
-- [ ] 3.6 執行確認失敗 → 實作驗證 → 執行確認通過
-- [ ] 3.7 寫失敗測試：submitted range 超出 `time_window_start`/`time_window_end` 時回 400（對應規格 Optional creator-defined time window）
-- [ ] 3.8 執行確認失敗 → 實作驗證 → 執行確認通過
-- [ ] 3.9 寫失敗測試：已報名者於 `recruiting`/`voting` 狀態重新送出 `ranges` 時，先刪除該使用者舊的 `ActivityAvailabilityRange` 再寫入新的（對應規格 Participant free-form availability reporting 的重新編輯情境）
-- [ ] 3.10 執行確認失敗 → 實作 → 執行確認通過
-- [ ] 3.11 寫失敗測試：`POST /:id/join` 對 `deadline_at < now` 但 `status` 仍是 `recruiting` 的活動回拒絕錯誤、不建立 `ActivityParticipant`，四個情境皆適用（對應規格 Join rejects activities past their deadline，設計決策「`joinActivity` 補上 `deadline_at` 檢查（全情境適用的安全修正）」）
-- [ ] 3.12 執行確認失敗 → 實作（加在既有 transaction 最前面的檢查）→ 執行確認通過，並跑一次既有情境一/三/四相關測試確認無回歸
+- [x] 3.1 寫失敗測試：range 模式活動 `POST /:id/join` 帶 `{ranges: [...]}` 時寫入對應數量的 `ActivityAvailabilityRange`（對應規格 Participant free-form availability reporting）
+- [x] 3.2 執行確認失敗
+- [x] 3.3 實作寫入邏輯
+- [x] 3.4 執行確認通過
+- [x] 3.5 寫失敗測試：空 `ranges` 陣列回 400、不寫入任何資料
+- [x] 3.6 執行確認失敗 → 實作驗證 → 執行確認通過
+- [x] 3.7 寫失敗測試：submitted range 超出 `time_window_start`/`time_window_end` 時回 400（對應規格 Optional creator-defined time window）
+- [x] 3.8 執行確認失敗 → 實作驗證 → 執行確認通過
+- [x] 3.9 寫失敗測試：已報名者於 `recruiting`/`voting` 狀態重新送出 `ranges` 時，先刪除該使用者舊的 `ActivityAvailabilityRange` 再寫入新的（對應規格 Participant free-form availability reporting 的重新編輯情境）
+- [x] 3.10 執行確認失敗 → 實作 → 執行確認通過
+- [x] 3.11 寫失敗測試：`POST /:id/join` 對 `deadline_at < now` 但 `status` 仍是 `recruiting` 的活動回拒絕錯誤、不建立 `ActivityParticipant`，四個情境皆適用（對應規格 Join rejects activities past their deadline，設計決策「`joinActivity` 補上 `deadline_at` 檢查（全情境適用的安全修正）」）
+- [x] 3.12 執行確認失敗 → 實作（加在既有 transaction 最前面的檢查）→ 執行確認通過，並跑一次既有情境一/三/四相關測試確認無回歸
 - [ ] 3.13 Commit
 
 ## 4. 重疊排序演算法

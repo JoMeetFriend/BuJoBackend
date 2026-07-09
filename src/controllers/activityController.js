@@ -348,7 +348,7 @@ export async function getActivity(req, res) {
 export async function joinActivity(req, res) {
   const { id } = req.params
   const userId = req.user.userId
-  const { candidateSlotIds } = req.body
+  const { candidateSlotIds, ranges } = req.body
 
   try {
     const outcome = await prisma.$transaction(async (tx) => {
@@ -366,12 +366,52 @@ export async function joinActivity(req, res) {
       })
 
       if (!activity) return { status: 404, message: '活動不存在' }
-      if (activity.status !== 'recruiting') return { status: 400, message: '此活動不在揪團中' }
       if (activity.creator_id === userId) return { status: 400, message: '不能報名自己建立的活動' }
+
+      // 四個情境皆適用：即使還沒有人打開詳情頁觸發 lazy check 轉換狀態，過期活動一律拒絕報名
+      if (activity.schedule && activity.schedule.deadline_at < new Date()) {
+        return { status: 400, message: '此活動已截止報名' }
+      }
+
+      const isRangeMode = activity.schedule?.availability_mode === 'range'
+
+      const existing = await tx.activityParticipant.findUnique({
+        where: { activity_id_user_id: { activity_id: id, user_id: userId } },
+      })
+      // range 模式允許已報名者在 recruiting/voting 階段重新送出可用時間；其餘情境維持原行為不可重複報名
+      const isResubmission = isRangeMode && existing?.status === 'joined'
+
+      if (!isResubmission && activity.status !== 'recruiting') {
+        return { status: 400, message: '此活動不在揪團中' }
+      }
+      if (isResubmission && activity.status !== 'recruiting' && activity.status !== 'voting') {
+        return { status: 400, message: '此活動不在揪團中' }
+      }
 
       const requiresVoting = !!activity.schedule?.requires_voting
       let availabilityData = []
-      if (requiresVoting) {
+      let rangesData = []
+      if (isRangeMode) {
+        const list = Array.isArray(ranges) ? ranges : []
+        if (list.length === 0) {
+          return { status: 400, message: '請提供至少一段可用時間' }
+        }
+        const windowStart = activity.schedule.time_window_start
+        const windowEnd = activity.schedule.time_window_end
+        for (const r of list) {
+          const start = new Date(r.start)
+          const end = new Date(r.end)
+          if ((windowStart && start < windowStart) || (windowEnd && end > windowEnd)) {
+            return { status: 400, message: '提交的可用時間超出建立者設定的時間範圍' }
+          }
+        }
+        rangesData = list.map((r) => ({
+          activity_id: id,
+          user_id: userId,
+          range_start: new Date(r.start),
+          range_end: new Date(r.end),
+        }))
+      } else if (requiresVoting) {
         const ids = Array.isArray(candidateSlotIds) ? [...new Set(candidateSlotIds)] : []
         if (ids.length === 0) {
           return { status: 400, message: '請選擇至少一個候選時段' }
@@ -384,35 +424,39 @@ export async function joinActivity(req, res) {
       }
 
       const currentCount = activity.participants.length
-      if (activity.participant_target && currentCount >= activity.participant_target) {
-        return { status: 400, message: '活動人數已滿' }
+      if (!isResubmission) {
+        if (activity.participant_target && currentCount >= activity.participant_target) {
+          return { status: 400, message: '活動人數已滿' }
+        }
+        if (existing?.status === 'joined') return { status: 400, message: '你已報名此活動' }
       }
 
-      const existing = await tx.activityParticipant.findUnique({
-        where: { activity_id_user_id: { activity_id: id, user_id: userId } },
-      })
-      if (existing?.status === 'joined') return { status: 400, message: '你已報名此活動' }
+      const newCount = isResubmission ? currentCount : currentCount + 1
+      const targetReached = !isResubmission && !!activity.participant_target && newCount >= activity.participant_target
 
-      const newCount = currentCount + 1
-      const targetReached = !!activity.participant_target && newCount >= activity.participant_target
-
-      if (existing) {
-        await tx.activityParticipant.update({
-          where: { id: existing.id },
-          data: { status: 'joined', joined_at: new Date() },
-        })
-      } else {
-        await tx.activityParticipant.create({
-          data: { activity_id: id, user_id: userId },
-        })
+      if (!isResubmission) {
+        if (existing) {
+          await tx.activityParticipant.update({
+            where: { id: existing.id },
+            data: { status: 'joined', joined_at: new Date() },
+          })
+        } else {
+          await tx.activityParticipant.create({
+            data: { activity_id: id, user_id: userId },
+          })
+        }
       }
 
-      if (requiresVoting) {
+      if (isRangeMode) {
+        await tx.activityAvailabilityRange.deleteMany({ where: { activity_id: id, user_id: userId } })
+        await tx.activityAvailabilityRange.createMany({ data: rangesData })
+      } else if (requiresVoting) {
         await tx.activityAvailability.createMany({ data: availabilityData, skipDuplicates: true })
       }
 
       // 人數一達標就立刻判定：免投票直接成團；投票制則交給目前票數決定直接成團或進入 voting 讓建立者選
-      if (targetReached) {
+      // range 模式沒有「投票達成共識」的概念，成團一律交由建立者手動 confirmFormation 決定
+      if (targetReached && !isRangeMode) {
         const outcome = requiresVoting
           ? decideFormationOutcome(
               activity.candidateSlots,
