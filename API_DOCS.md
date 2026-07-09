@@ -509,3 +509,83 @@ const res = await fetch("http://localhost:3000/api/users/me/avatar", {
   "count": 3
 }
 ```
+
+## Activity — 情境二（日期固定・時間讓大家選）range 模式
+
+> 情境一（全固定）、情境三（候選日期・時間固定）、情境四（候選日期・各自時段）維持既有的候選時段勾選投票制不變，不在此列出。情境二改為「參與者自由回報可用時間範圍，系統計算重疊排序」，`ActivitySchedule.availability_mode` 為 `'range'` 時即為情境二。
+>
+> `deadline_at`（報名截止時間）錨點沿用現行機制（創建者自選提前 N 天/小時），情境二計算錨點的來源從「候選時段裡最早的開始時間」改為「`fixed_date` + `time_window_start`（沒設就是當天最早）」——這是前端錨點計算的調整（`BuJo` repo 同名 change 負責），後端本次不需改動。
+
+### POST `/api/activities` — 建立情境二活動 🔒
+
+**Request Body（情境二專屬欄位）**
+
+| 欄位              | 類型   | 必填 | 說明                                              |
+| ----------------- | ------ | ---- | ------------------------------------------------- |
+| `singleDate`      | string | ✅   | 活動固定日期                                       |
+| `timeWindowStart` | string | 選填 | 允許回報的時間範圍起點；不設 = 當天全天皆可         |
+| `timeWindowEnd`   | string | 選填 | 允許回報的時間範圍終點；不設 = 當天全天皆可         |
+
+> 不再需要 `slots`（候選時段列表）與 `creatorSlotIndexes`（建立者候選時段索引）——建立活動時不會產生任何 `ActivityCandidateSlot`，建立者在重疊排序中永遠視為有空。
+
+**Response**：同其他情境，`201` 回傳 `{ "activity": { "id": "uuid" } }`。
+
+### POST `/api/activities/:id/join` — 報名並回報可用時間 🔒
+
+> **BREAKING**：情境二的 body 從 `{candidateSlotIds}` 改為 `{ranges: [{start, end}]}`。已報名者可在 `recruiting`／`voting` 狀態重新呼叫此 API 送出新的 `ranges`，後端會先刪除該使用者舊的回報再寫入新的。
+
+**Request Body（情境二）**
+
+| 欄位     | 類型                          | 必填 | 說明                     |
+| -------- | ----------------------------- | ---- | ------------------------ |
+| `ranges` | `{start, end}[]`（ISO 字串）  | ✅   | 一段或多段可用時間，不可為空 |
+
+**Response**
+
+| 狀態碼 | 說明                                                         |
+| ------ | ------------------------------------------------------------ |
+| `200`  | 報名 / 重新回報成功                                           |
+| `400`  | `ranges` 為空 / 超出 `time_window_start`／`time_window_end` / 活動已截止報名（`deadline_at` 已過，四情境皆適用） |
+
+### GET `/api/activities/:id` — 取得活動詳情 🔒
+
+情境二的 `decision_candidates` 格式與情境一/三/四（扁平陣列）不同，前端需依 `activity.availability_mode` 判斷：
+
+```json
+// availability_mode: "range"
+{
+  "activity": {
+    "availability_mode": "range",
+    "decision_candidates": {
+      "perfect_overlap": [
+        { "id": "temp-2026-08-01T10:00:00.000Z", "slot_start": "...", "slot_end": "...", "count": 3 }
+      ],
+      "partial_overlap": [
+        { "id": "temp-2026-08-01T09:00:00.000Z", "slot_start": "...", "slot_end": "...", "count": 2 }
+      ]
+    }
+  }
+}
+```
+
+- `perfect_overlap`：重疊人數＝總報名人數的所有格子
+- `partial_overlap`：其餘格子中人數最多的前 3 筆
+- `id` 為 `temp-` 前綴加上該格 `slot_start` 的 ISO 字串，非真實的 `ActivityCandidateSlot.id`（這些候選格是即時計算、不存資料庫）
+
+### POST `/api/activities/:id/confirm-formation` — 建立者確認成團 🔒
+
+> 情境二改用 `{ slotStart, slotEnd }`（而非 `candidateSlotId`）指定要確認的格子，須與目前 `decision_candidates` 中的某一筆完全相符。後端會在確認的當下才臨時建立一筆 `ActivityCandidateSlot` 並寫入 `confirmed_slot_id`。
+
+**Request Body（情境二）**
+
+| 欄位        | 類型               | 必填 | 說明                                  |
+| ----------- | ------------------ | ---- | ------------------------------------- |
+| `slotStart` | string（ISO 字串） | ✅   | 須與 `decision_candidates` 中某筆一致 |
+| `slotEnd`   | string（ISO 字串） | ✅   | 須與 `decision_candidates` 中某筆一致 |
+
+**Response**
+
+| 狀態碼 | 說明                                             |
+| ------ | ------------------------------------------------ |
+| `200`  | 成團成功                                         |
+| `400`  | 此活動狀態不允許確認成團 / 時段不在候選名單中     |

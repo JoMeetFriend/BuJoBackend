@@ -51,12 +51,12 @@
 - [x] 6.2 執行確認失敗 → 實作 → 執行確認通過
 - [x] 6.3 寫失敗測試：`{ slotStart, slotEnd }` 不在目前 `decision_candidates` 名單內時回 400、不建立 `ActivityCandidateSlot`
 - [x] 6.4 執行確認失敗 → 實作 → 執行確認通過
-- [ ] 6.5 Commit
+- [x] 6.5 Commit
 
 ## 7. 文件與跨庫備註
 
-- [ ] 7.1 於 `API_DOCS.md` 註記設計決策「`deadline_at` 錨點沿用現行機制，不改回規劃文件的自動公式」——此項為前端錨點計算調整（`BuJo` repo 同名 change 負責），後端本次不需改動
-- [ ] 7.2 更新 `API_DOCS.md`：`POST /activities` 情境二 payload 變更（移除 `slots`/`creatorSlotIndexes`，新增 `timeWindowStart`/`timeWindowEnd`）、`POST /:id/join` range 模式 body 格式、`GET /:id` `decision_candidates` 回傳格式
+- [x] 7.1 於 `API_DOCS.md` 註記設計決策「`deadline_at` 錨點沿用現行機制，不改回規劃文件的自動公式」——此項為前端錨點計算調整（`BuJo` repo 同名 change 負責），後端本次不需改動
+- [x] 7.2 更新 `API_DOCS.md`：`POST /activities` 情境二 payload 變更（移除 `slots`/`creatorSlotIndexes`，新增 `timeWindowStart`/`timeWindowEnd`）、`POST /:id/join` range 模式 body 格式、`GET /:id` `decision_candidates` 回傳格式
 
 ## 8. 既有測試回歸確認
 
