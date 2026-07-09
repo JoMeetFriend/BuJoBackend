@@ -390,6 +390,45 @@ const res = await fetch("http://localhost:3000/api/users/me/avatar", {
 }
 ```
 
+### DELETE `/api/friendships/:id` — 刪除好友 (軟刪除) 🔒
+
+> 需要登入（cookie 中有效的 `token`）。
+> **注意：** 網址上的 `:id` 必須是 **`friendship` 的 ID**，而不是對方的 `user ID`。
+> 只有該好友關係的雙方當事人可以執行刪除，且該關係的狀態必須為 `accepted`。刪除後狀態將變更為 `deleted`。
+
+**Response**
+
+| 狀態碼 | 說明                              |
+| ------ | --------------------------------- |
+| `200`  | 已刪除好友                        |
+| `400`  | 此狀態無法刪除好友 (非 accepted)  |
+| `401`  | 未登入 / token 無效或已過期       |
+| `403`  | 無權操作此好友關係 (非雙方當事人) |
+| `404`  | 找不到該好友關係                  |
+
+```json
+// 200 成功
+{
+  "message": "已刪除好友",
+  "friendship": {
+    "id": "uuid",
+    "status": "deleted"
+  }
+}
+
+// 400 狀態不對
+{ "message": "此狀態無法刪除好友" }
+
+// 401 沒登入
+{ "message": "未登入" }
+
+// 403 越權操作 (IDOR 防禦)
+{ "message": "無權操作此好友關係" }
+
+// 404 找不到
+{ "message": "找不到該好友關係" }
+```
+
 ### GET `/api/friends` — 取得好友列表 🔒
 
 > 需要登入（cookie 中有效的 `token`）
@@ -425,10 +464,10 @@ const res = await fetch("http://localhost:3000/api/users/me/avatar", {
 
 **Response**
 
-| 狀態碼 | 說明                          |
-| ------ | ----------------------------- |
-| `200`  | 成功，回傳目前登入者通知列表  |
-| `401`  | 未登入 / token 無效或已過期   |
+| 狀態碼 | 說明                         |
+| ------ | ---------------------------- |
+| `200`  | 成功，回傳目前登入者通知列表 |
+| `401`  | 未登入 / token 無效或已過期  |
 
 ```json
 // 200
@@ -455,11 +494,11 @@ const res = await fetch("http://localhost:3000/api/users/me/avatar", {
 
 **通知類型**
 
-| type                      | category   | message 格式                              | actions              |
-| ------------------------- | ---------- | ----------------------------------------- | -------------------- |
-| `friend_request_created`  | `friend`   | `{requesterName} 向你發送好友邀請`        | pending 時可接受/拒絕 |
-| `friend_request_accepted` | `friend`   | `{receiverName} 接受了你的好友邀請`       | 無                   |
-| `activity_created`        | `activity` | `{creatorName} 建立了新活動：{activity}`  | 無                   |
+| type                      | category   | message 格式                             | actions               |
+| ------------------------- | ---------- | ---------------------------------------- | --------------------- |
+| `friend_request_created`  | `friend`   | `{requesterName} 向你發送好友邀請`       | pending 時可接受/拒絕 |
+| `friend_request_accepted` | `friend`   | `{receiverName} 接受了你的好友邀請`      | 無                    |
+| `activity_created`        | `activity` | `{creatorName} 建立了新活動：{activity}` | 無                    |
 
 **LINE 推播**
 
