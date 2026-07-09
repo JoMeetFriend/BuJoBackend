@@ -9,15 +9,15 @@ export async function createActivity(req, res) {
   const {
     title, location, limit, note, type, deadline,
     startDate, startTime, endDate, endTime, allDay,
-    singleDate, slots,
+    singleDate, timeWindowStart, timeWindowEnd,
     candidateDates, uniformTime,
     dateSlots,
     creatorSlotIndexes,
   } = req.body
   const creatorId = req.user.userId
-  const isVotingB = Array.isArray(slots) && slots.length > 0
   const isVotingC = Array.isArray(candidateDates) && candidateDates.length > 0
   const isVotingD = Array.isArray(dateSlots) && dateSlots.length > 0
+  const isVotingB = !!singleDate && !startDate && !isVotingC && !isVotingD
   const isVoting = isVotingB || isVotingC || isVotingD
 
   if (!title) {
@@ -28,11 +28,19 @@ export async function createActivity(req, res) {
   }
 
   let candidateSlotsData
+  let scheduleExtra = { availability_mode: 'slot' }
   if (isVotingB) {
-    if (!singleDate) {
-      return res.status(400).json({ message: '活動日期為必填' })
+    const fixedDate = parseDate(singleDate)
+    const timeWindowStartAt = timeWindowStart ? parseDateTime(singleDate, timeWindowStart) : null
+    const timeWindowEndAt = timeWindowEnd ? parseDateTime(singleDate, timeWindowEnd) : null
+    scheduleExtra = {
+      availability_mode: 'range',
+      fixed_date: fixedDate,
+      time_window_start: timeWindowStartAt,
+      time_window_end: timeWindowEndAt,
+      vote_deadline_at: timeWindowStartAt ?? fixedDate,
     }
-    candidateSlotsData = buildVoteSlots(singleDate, slots)
+    candidateSlotsData = []
   } else if (isVotingC) {
     if (uniformTime?.allDay) {
       candidateSlotsData = buildCandidateDateAllDaySlots(candidateDates)
@@ -54,7 +62,7 @@ export async function createActivity(req, res) {
     candidateSlotsData = [{ slot_start: slotStart, slot_end: slotEnd, all_day: !!allDay }]
   }
 
-  if (isVoting) {
+  if (isVotingC || isVotingD) {
     if (!Array.isArray(creatorSlotIndexes) || creatorSlotIndexes.length === 0) {
       return res.status(400).json({ message: '請選擇建立者自己方便的候選時段' })
     }
@@ -79,6 +87,7 @@ export async function createActivity(req, res) {
           create: {
             requires_voting: isVoting,
             deadline_at: deadlineAt,
+            ...scheduleExtra,
           },
         },
         candidateSlots: {
@@ -94,7 +103,7 @@ export async function createActivity(req, res) {
       include: { candidateSlots: true },
     })
 
-    if (isVoting) {
+    if (isVotingC || isVotingD) {
       // 用 slot_start/slot_end 的值把剛建立的候選時段對應回原本陣列的索引（不依賴回傳順序）；
       // 同一組時段可能重複（相同 start/end），用 queue 存 id 逐一取用，避免互相覆蓋、共用同一個 id
       const idsByTiming = new Map()
@@ -730,15 +739,6 @@ function buildFixedSlot(startDate, startTime, endDate, endTime, allDay) {
     : new Date(slotStart.getTime() + 60 * 60 * 1000)
 
   return { slotStart, slotEnd }
-}
-
-// 情境 b：同一個固定日期，把建立者手動輸入的多個候選時段（時段1/2/3...）各自轉成一筆
-function buildVoteSlots(singleDate, slots) {
-  return slots.map(({ startTime, endTime }) => ({
-    slot_start: parseDateTime(singleDate, startTime),
-    slot_end: parseDateTime(singleDate, endTime),
-    all_day: false,
-  }))
 }
 
 // 情境 c：複選的候選日期，套用同一組「統一時間」，各自展開成一筆獨立的候選時段
