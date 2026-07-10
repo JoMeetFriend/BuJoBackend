@@ -392,6 +392,13 @@ export async function getActivity(req, res) {
           all_day: s.all_day,
           is_selected: s.availabilities.some((a) => a.user_id === userId),
         })),
+        // range 模式下這個人自己先前送出的可用時間，讓前端「修改時間」重開 picker 時可以預填，
+        // 不用逼使用者重新選一次；非 range 模式一律回空陣列
+        my_ranges: isRangeMode
+          ? activity.availabilityRanges
+              .filter((r) => r.user_id === userId)
+              .map((r) => ({ start: r.range_start.toISOString(), end: r.range_end.toISOString() }))
+          : [],
         decision_candidates: decisionCandidates,
         confirmed_slot: confirmedSlot,
         participants: activity.participants.map((p) => ({
@@ -442,7 +449,8 @@ export async function joinActivity(req, res) {
       const isRangeMode = activity.schedule?.availability_mode === 'range'
       const requiresVoting = !!activity.schedule?.requires_voting
       const isFindDateMode = deriveScheduleVariant(activity.schedule, activity.candidateSlots) === 'find_date'
-      // range 模式允許已報名者在 recruiting/voting 階段重送可用時間；Mode C 只允許 recruiting 重選日期
+      // range 模式跟 Mode C 一樣，已報名者只能在 recruiting 階段重送答案——voting 階段建立者已經在看
+      // 彙總後的決選畫面，這時候還讓人改答案會讓建立者看到的東西跟實際不符
       const isRangeResubmission = isRangeMode && existing?.status === 'joined'
       const isFindDateResubmission = !isRangeMode && requiresVoting && isFindDateMode && existing?.status === 'joined'
       const isResubmission = isRangeResubmission || isFindDateResubmission
@@ -450,10 +458,7 @@ export async function joinActivity(req, res) {
       if (!isResubmission && activity.status !== 'recruiting') {
         return { status: 400, message: '此活動不在揪團中' }
       }
-      if (isRangeResubmission && activity.status !== 'recruiting' && activity.status !== 'voting') {
-        return { status: 400, message: '此活動不在揪團中' }
-      }
-      if (isFindDateResubmission && activity.status !== 'recruiting') {
+      if (isResubmission && activity.status !== 'recruiting') {
         return { status: 400, message: '此活動不在揪團中' }
       }
 

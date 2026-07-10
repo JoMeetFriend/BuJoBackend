@@ -195,10 +195,10 @@ describe('joinActivity - 情境二 range 模式報名', () => {
     expect(prisma.activityAvailabilityRange.createMany).not.toHaveBeenCalled()
   })
 
-  it('已報名者於 recruiting/voting 狀態重新送出 ranges 時，先刪除舊的再寫入新的', async () => {
+  it('已報名者於 recruiting 狀態重新送出 ranges 時，先刪除舊的再寫入新的', async () => {
     prisma.activityParticipant.findUnique.mockResolvedValue({ id: 'participant-row-1', status: 'joined' })
     prisma.activity.findUnique.mockResolvedValue(
-      makeRangeActivity({ status: 'voting', participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)] }),
+      makeRangeActivity({ status: 'recruiting', participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)] }),
     )
     const res = makeRes()
 
@@ -215,6 +215,23 @@ describe('joinActivity - 情境二 range 模式報名', () => {
     })
     expect(prisma.activityParticipant.create).not.toHaveBeenCalled()
     expect(res.json).toHaveBeenCalledWith({ message: '報名成功' })
+  })
+
+  it('已報名者於 voting 狀態嘗試重新送出 ranges 時回 400，不寫入任何資料——跟 Mode C 一樣只能在 recruiting 改', async () => {
+    prisma.activityParticipant.findUnique.mockResolvedValue({ id: 'participant-row-1', status: 'joined' })
+    prisma.activity.findUnique.mockResolvedValue(
+      makeRangeActivity({ status: 'voting', participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)] }),
+    )
+    const res = makeRes()
+
+    const start = new Date('2026-08-01T14:00:00Z')
+    const end = new Date('2026-08-01T16:00:00Z')
+
+    await joinActivity(makeReq({ userId: PARTICIPANT_ID, body: { ranges: [{ start, end }] } }), res)
+
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(prisma.activityAvailabilityRange.deleteMany).not.toHaveBeenCalled()
+    expect(prisma.activityAvailabilityRange.createMany).not.toHaveBeenCalled()
   })
 })
 
@@ -347,6 +364,64 @@ describe('getActivity - range 模式 decision_candidates', () => {
           time_window_start: '18:00',
           time_window_end: '20:00',
         }),
+      }),
+    )
+  })
+
+  it('my_ranges 只回傳目前請求者自己送出的 ranges，不含其他人的，供前端「修改時間」重開 picker 時預填', async () => {
+    const activity = makeRangeActivity({
+      status: 'recruiting',
+      participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)],
+      availabilityRanges: [
+        {
+          user_id: PARTICIPANT_ID,
+          range_start: new Date('2026-08-01T18:00:00Z'),
+          range_end: new Date('2026-08-01T20:00:00Z'),
+        },
+        {
+          user_id: CREATOR_ID,
+          range_start: new Date('2026-08-01T10:00:00Z'),
+          range_end: new Date('2026-08-01T12:00:00Z'),
+        },
+      ],
+    })
+    prisma.activity.findUnique.mockResolvedValue(activity)
+    const res = makeRes()
+
+    await getActivity(makeReq({ userId: PARTICIPANT_ID }), res)
+
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activity: expect.objectContaining({
+          my_ranges: [
+            { start: '2026-08-01T18:00:00.000Z', end: '2026-08-01T20:00:00.000Z' },
+          ],
+        }),
+      }),
+    )
+  })
+
+  it('非 range 模式的活動 my_ranges 一律回空陣列', async () => {
+    const activity = makeRangeActivity({
+      schedule: {
+        requires_voting: true,
+        availability_mode: 'slot',
+        deadline_at: new Date('2099-01-01T00:00:00Z'),
+        fixed_date: null,
+        time_window_start: null,
+        time_window_end: null,
+        vote_deadline_at: new Date('2099-01-01T00:00:00Z'),
+        confirmedSlot: null,
+      },
+    })
+    prisma.activity.findUnique.mockResolvedValue(activity)
+    const res = makeRes()
+
+    await getActivity(makeReq({ userId: PARTICIPANT_ID }), res)
+
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activity: expect.objectContaining({ my_ranges: [] }),
       }),
     )
   })
