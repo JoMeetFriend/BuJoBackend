@@ -14,7 +14,12 @@ export const getAcceptedFriendsList = async (currentUserId) => {
     },
   });
 
-  return friendships.map((f) =>
-    f.requester_id === currentUserId ? f.receiver : f.requester
-  );
+  return friendships.map((f) => {
+    const friendUser =
+      f.requester_id === currentUserId ? f.receiver : f.requester;
+    return {
+      ...friendUser,
+      friendship_id: f.id,
+    };
+  });
 };
