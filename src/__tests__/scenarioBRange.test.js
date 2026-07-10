@@ -336,12 +336,15 @@ describe('getActivity - range 模式 decision_candidates', () => {
 
     await getActivity(makeReq(), res)
 
+    // 前端 AvailabilityPickerModal 的 fixedDate/timeWindowStart/timeWindowEnd props 期待
+    // 'YYYY-MM-DD'／'HH:mm' 這種以伺服器所在時區（本地時間）為準的純字串，不是原始 Date／UTC ISO 字串——
+    // 直接回傳 Date 物件會被序列化成 UTC ISO，在 UTC+8 時區下日期會整個位移少一天
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
         activity: expect.objectContaining({
-          fixed_date: fixedDate,
-          time_window_start: timeWindowStart,
-          time_window_end: timeWindowEnd,
+          fixed_date: '2026-08-01',
+          time_window_start: '18:00',
+          time_window_end: '20:00',
         }),
       }),
     )

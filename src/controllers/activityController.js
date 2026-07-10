@@ -381,9 +381,9 @@ export async function getActivity(req, res) {
         requires_voting: sched?.requires_voting ?? false,
         availability_mode: sched?.availability_mode ?? 'slot',
         deadline_at: sched?.deadline_at ?? null,
-        fixed_date: sched?.fixed_date ?? null,
-        time_window_start: sched?.time_window_start ?? null,
-        time_window_end: sched?.time_window_end ?? null,
+        fixed_date: sched?.fixed_date ? formatISODate(sched.fixed_date) : null,
+        time_window_start: sched?.time_window_start ? formatHHMM(sched.time_window_start) : null,
+        time_window_end: sched?.time_window_end ? formatHHMM(sched.time_window_end) : null,
         candidate_slots: activity.candidateSlots.map((s) => ({
           id: s.id,
           slot_start: s.slot_start,
@@ -870,6 +870,14 @@ function formatISODate(date) {
   const month = String(date.getMonth() + 1).padStart(2, '0')
   const day = String(date.getDate()).padStart(2, '0')
   return `${year}-${month}-${day}`
+}
+
+// 情境二：fixed_date/time_window_start/time_window_end 要回傳伺服器本地時區的 'HH:mm'，
+// 不能直接讓 Date 序列化成 UTC ISO 字串，否則 UTC+8 時區下日期會位移少一天
+function formatHHMM(date) {
+  const hour = String(date.getHours()).padStart(2, '0')
+  const minute = String(date.getMinutes()).padStart(2, '0')
+  return `${hour}:${minute}`
 }
 
 function formatTime(date) {
