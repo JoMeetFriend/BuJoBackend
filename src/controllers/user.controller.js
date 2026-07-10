@@ -55,7 +55,7 @@ export const searchUsers = async (req, res) => {
     const currentUserId = req.user.userId;
 
     if (!q || typeof q !== "string" || !/^[a-fA-F0-9]{5}$/.test(q)) {
-      return res.status(400).json({ message: "無效的搜尋格式" }); // TODO: i18n
+      return res.status(400).json({ message: "無效的搜尋格式" });
     }
 
     const sanitizedQ = q.toLowerCase();
@@ -68,6 +68,33 @@ export const searchUsers = async (req, res) => {
     res.status(200).json(users);
   } catch (error) {
     console.error("Search Users Controller Error:", error);
-    res.status(500).json({ message: "伺服器內部錯誤" }); // TODO: i18n
+    res.status(500).json({ message: "伺服器內部錯誤" });
+  }
+};
+
+export const updateMyName = async (req, res) => {
+  try {
+    const { display_name } = req.body;
+    const currentUserId = req.user.userId;
+
+    if (display_name === undefined || typeof display_name !== "string") {
+      return res.status(400).json({ message: "無效的名稱格式" });
+    }
+
+    const trimmedName = display_name.trim();
+
+    if (trimmedName.length === 0) {
+      return res.status(400).json({ message: "顯示名稱不可為空白" });
+    }
+    if (trimmedName.length > 50) {
+      return res.status(400).json({ message: "顯示名稱不可超過 50 個字元" });
+    }
+
+    const user = await userService.updateUserName(currentUserId, trimmedName);
+
+    return res.status(200).json({ user });
+  } catch (error) {
+    console.error("Update Name Controller Error:", error);
+    return res.status(500).json({ message: "伺服器內部錯誤" });
   }
 };

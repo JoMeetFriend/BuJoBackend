@@ -11,6 +11,9 @@ router.patch(
   uploadAvatar,
   userController.updateMyAvatar,
 );
+
+router.patch("/me/name", authenticate, userController.updateMyName);
+
 router.get("/search", authenticate, userController.searchUsers);
 
 export default router;
