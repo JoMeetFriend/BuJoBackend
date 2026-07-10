@@ -11,4 +11,4 @@
 - [x] 1.9 寫測試：分別對情境 b/c/d（`isVotingB`/`isVotingC`/`isVotingD`）帶已過期 `deadline` 都回 400（對應規格 Validation applies to every scheduling scenario）
 - [x] 1.10 執行測試確認失敗 → 確認驗證點在四個情境分支判斷之前執行 → 執行測試確認通過
 - [x] 1.11 執行整套後端測試套件，確認既有情境一/二/三/四建立活動測試無回歸
-- [ ] 1.12 Commit
+- [x] 1.12 Commit
