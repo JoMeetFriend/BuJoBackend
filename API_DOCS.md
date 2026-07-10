@@ -471,6 +471,22 @@ const res = await fetch("http://localhost:3000/api/users/me/avatar", {
 - 後端不會自動建立 LINE Official Account、provider、Messaging API channel 或 token；請依 `docs/line-official-account-setup.md` 手動設定，也要讓使用者透過 QR code、add friend 連結或 `bot_prompt` 加入官方帳號。
 - `src/services/lineService.js` 只處理 LINE Login/OAuth；官方帳號推播由 `src/services/lineMessagingService.js` 呼叫 Messaging API。
 
+### GET `/api/notifications/unread-count` — 取得未讀通知數 🔒
+
+> 需要登入（cookie 中有效的 `token`）。回傳目前登入者的未讀通知數，供通知按鈕/頁面顯示 badge，不需要拉取整個通知列表。
+
+**Response**
+
+| 狀態碼 | 說明                          |
+| ------ | ----------------------------- |
+| `200`  | 成功，回傳目前登入者未讀通知數  |
+| `401`  | 未登入 / token 無效或已過期   |
+
+```json
+// 200
+{ "unreadCount": 3 }
+```
+
 ### PATCH `/api/notifications/:id/read` — 標記單筆通知已讀 🔒
 
 > 需要登入（cookie 中有效的 `token`）。只能標記自己的通知。

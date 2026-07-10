@@ -2,6 +2,7 @@ import {
   listUserNotifications,
   markAllNotificationsAsRead,
   markNotificationAsRead,
+  countUnreadNotifications,
 } from "../services/notificationService.js";
 
 export async function listNotifications(req, res) {
@@ -47,6 +48,19 @@ export async function markAllRead(req, res) {
     });
   } catch (error) {
     console.error("markAllRead 錯誤：", error);
+    return res.status(500).json({ message: "伺服器錯誤" });
+  }
+}
+
+export async function getUnreadCount(req, res) {
+  try {
+    const count = await countUnreadNotifications({
+      userId: req.user.userId,
+    });
+
+    return res.json({ unreadCount: count });
+  } catch (error) {
+    console.error("getUnreadCount 錯誤：", error);
     return res.status(500).json({ message: "伺服器錯誤" });
   }
 }

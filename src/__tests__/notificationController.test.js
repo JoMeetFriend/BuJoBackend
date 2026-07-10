@@ -5,6 +5,7 @@ jest.unstable_mockModule("../lib/prisma.js", () => ({
     notification: {
       findMany: jest.fn(),
       updateMany: jest.fn(),
+      count: jest.fn(),
     },
     friendship: {
       findUnique: jest.fn(),
@@ -19,6 +20,7 @@ const {
   listNotifications,
   markAllRead,
   markRead,
+  getUnreadCount,
 } = await import("../controllers/notificationController.js");
 const { default: notificationRoutes } = await import("../routes/notifications.js");
 const { default: prisma } = await import("../lib/prisma.js");
@@ -61,6 +63,14 @@ describe("/api/notifications routes", () => {
     expect(readAllRoute).toBeDefined();
     expect(readAllRoute.route.methods.patch).toBe(true);
     expect(readAllRoute.route.stack[0].handle.name).toBe("authenticate");
+  });
+
+  it("使用 authenticate middleware 保護未讀數 API", () => {
+    const unreadCountRoute = notificationRoutes.stack.find((layer) => layer.route?.path === "/unread-count");
+
+    expect(unreadCountRoute).toBeDefined();
+    expect(unreadCountRoute.route.methods.get).toBe(true);
+    expect(unreadCountRoute.route.stack[0].handle.name).toBe("authenticate");
   });
 });
 
@@ -315,6 +325,63 @@ describe("markAllRead", () => {
   });
 });
 
+describe("getUnreadCount", () => {
+  it("回傳目前登入者的未讀通知數", async () => {
+    prisma.notification.count.mockResolvedValue(3);
+    const res = makeRes();
+
+    await getUnreadCount(makeReq({ userId: "user-b" }), res);
+
+    expect(prisma.notification.count).toHaveBeenCalledWith({
+      where: { user_id: "user-b", is_read: false },
+    });
+    expect(res.json).toHaveBeenCalledWith({ unreadCount: 3 });
+  });
+
+  it("單筆已讀後未讀數應遞減", async () => {
+    prisma.notification.updateMany.mockResolvedValue({ count: 1 });
+    prisma.notification.count
+      .mockResolvedValueOnce(5)
+      .mockResolvedValueOnce(4);
+
+    const beforeRes = makeRes();
+    await getUnreadCount(makeReq({ userId: "user-b" }), beforeRes);
+    expect(beforeRes.json).toHaveBeenCalledWith({ unreadCount: 5 });
+
+    const markRes = makeRes();
+    await markRead(
+      makeReq({ userId: "user-b", params: { id: "notification-1" } }),
+      markRes,
+    );
+    expect(markRes.json).toHaveBeenCalledWith({ message: "已標記為已讀" });
+
+    const afterRes = makeRes();
+    await getUnreadCount(makeReq({ userId: "user-b" }), afterRes);
+    expect(afterRes.json).toHaveBeenCalledWith({ unreadCount: 4 });
+    expect(prisma.notification.count).toHaveBeenCalledTimes(2);
+  });
+
+  it("全部已讀後未讀數歸零", async () => {
+    prisma.notification.updateMany.mockResolvedValue({ count: 3 });
+    prisma.notification.count.mockResolvedValueOnce(3).mockResolvedValueOnce(0);
+
+    const beforeRes = makeRes();
+    await getUnreadCount(makeReq({ userId: "user-b" }), beforeRes);
+    expect(beforeRes.json).toHaveBeenCalledWith({ unreadCount: 3 });
+
+    const markAllRes = makeRes();
+    await markAllRead(makeReq({ userId: "user-b" }), markAllRes);
+    expect(markAllRes.json).toHaveBeenCalledWith({
+      message: "已全部標記為已讀",
+      count: 3,
+    });
+
+    const afterRes = makeRes();
+    await getUnreadCount(makeReq({ userId: "user-b" }), afterRes);
+    expect(afterRes.json).toHaveBeenCalledWith({ unreadCount: 0 });
+  });
+});
+
 describe("錯誤處理：資料庫拋出例外時不能讓 request 直接 crash", () => {
   it("listNotifications 遇到例外回傳 500", async () => {
     prisma.notification.findMany.mockRejectedValue(new Error("db down"));
@@ -341,6 +408,16 @@ describe("錯誤處理：資料庫拋出例外時不能讓 request 直接 crash"
     const res = makeRes();
 
     await markAllRead(makeReq({ userId: "user-b" }), res);
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({ message: "伺服器錯誤" });
+  });
+
+  it("getUnreadCount 遇到例外回傳 500", async () => {
+    prisma.notification.count.mockRejectedValue(new Error("db down"));
+    const res = makeRes();
+
+    await getUnreadCount(makeReq({ userId: "user-b" }), res);
 
     expect(res.status).toHaveBeenCalledWith(500);
     expect(res.json).toHaveBeenCalledWith({ message: "伺服器錯誤" });

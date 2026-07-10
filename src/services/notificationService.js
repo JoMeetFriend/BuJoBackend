@@ -299,6 +299,16 @@ export async function markAllNotificationsAsRead({ userId }, db = prisma) {
   });
 }
 
+export async function countUnreadNotifications({ userId }, db = prisma) {
+  if (!userId) {
+    throw new Error("userId is required");
+  }
+
+  return db.notification.count({
+    where: { user_id: userId, is_read: false },
+  });
+}
+
 async function formatNotification(notification, db) {
   if (notification.reference_type === NOTIFICATION_REFERENCE_TYPES.FRIENDSHIP) {
     return formatFriendshipNotification(notification, db);

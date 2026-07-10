@@ -5,6 +5,7 @@ jest.unstable_mockModule('../lib/prisma.js', () => ({
     notification: {
       create: jest.fn(),
       createMany: jest.fn(),
+      count: jest.fn(),
     },
     friendship: {
       findMany: jest.fn(),
@@ -32,6 +33,7 @@ const {
   createFriendRequestAcceptedNotification,
   createActivityCreatedNotification,
   notifyFriendsActivityCreated,
+  countUnreadNotifications,
 } = await import('../services/notificationService.js')
 const { default: prisma } = await import('../lib/prisma.js')
 const { sendLinePushMessage } = await import('../services/lineMessagingService.js')
@@ -376,5 +378,22 @@ describe('notificationService', () => {
       to: 'U-line-c',
       text: 'A 建立了新活動：週末野餐',
     })
+  })
+
+  // 測試 countUnreadNotifications 會用 user_id + is_read 條件查詢未讀數。
+  it('countUnreadNotifications 會回傳該使用者未讀通知數', async () => {
+    prisma.notification.count.mockResolvedValue(3)
+
+    const result = await countUnreadNotifications({ userId: 'user-b' })
+
+    expect(result).toBe(3)
+    expect(prisma.notification.count).toHaveBeenCalledWith({
+      where: { user_id: 'user-b', is_read: false },
+    })
+  })
+
+  // 測試 countUnreadNotifications 缺少 userId 時會丟錯。
+  it('countUnreadNotifications 缺 userId 會丟錯', async () => {
+    await expect(countUnreadNotifications({})).rejects.toThrow('userId is required')
   })
 })
