@@ -19,10 +19,8 @@ jest.unstable_mockModule("../services/cloudinaryAvatarService.js", () => ({
 const { default: request } = await import("supertest");
 const { default: app } = await import("../app.js");
 const { default: prisma } = await import("../lib/prisma.js");
-const {
-  uploadAvatarImage,
-  deleteAvatarImage,
-} = await import("../services/cloudinaryAvatarService.js");
+const { uploadAvatarImage, deleteAvatarImage } =
+  await import("../services/cloudinaryAvatarService.js");
 
 describe("User API Routes Integration Tests", () => {
   let validToken;
@@ -185,10 +183,12 @@ describe("User API Routes Integration Tests", () => {
         display_name: "Test User",
         avatar_url: "https://res.cloudinary.com/demo/image/upload/avatar.png",
       });
-      expect(uploadAvatarImage).toHaveBeenCalledWith(expect.objectContaining({
-        buffer: expect.any(Buffer),
-        mimetype: "image/png",
-      }));
+      expect(uploadAvatarImage).toHaveBeenCalledWith(
+        expect.objectContaining({
+          buffer: expect.any(Buffer),
+          mimetype: "image/png",
+        }),
+      );
       expect(prisma.user.findUnique).toHaveBeenCalledWith({
         where: { id: testUserId },
         select: { id: true, avatar_url: true, avatar_public_id: true },
@@ -211,11 +211,13 @@ describe("User API Routes Integration Tests", () => {
     it("更新成功後應該移除舊的 Cloudinary 頭像", async () => {
       prisma.user.findUnique.mockResolvedValue({
         id: testUserId,
-        avatar_url: "https://res.cloudinary.com/demo/image/upload/old-avatar.png",
+        avatar_url:
+          "https://res.cloudinary.com/demo/image/upload/old-avatar.png",
         avatar_public_id: "bujo/avatars/old-avatar",
       });
       uploadAvatarImage.mockResolvedValue({
-        avatarUrl: "https://res.cloudinary.com/demo/image/upload/new-avatar.png",
+        avatarUrl:
+          "https://res.cloudinary.com/demo/image/upload/new-avatar.png",
         publicId: "bujo/avatars/new-avatar",
       });
       prisma.user.update.mockImplementation(async ({ data }) => ({
@@ -242,7 +244,9 @@ describe("User API Routes Integration Tests", () => {
         avatar_url: null,
         avatar_public_id: null,
       });
-      uploadAvatarImage.mockRejectedValue(new Error("Cloudinary upload failed"));
+      uploadAvatarImage.mockRejectedValue(
+        new Error("Cloudinary upload failed"),
+      );
 
       const res = await request(app)
         .patch("/api/users/me/avatar")
@@ -265,7 +269,8 @@ describe("User API Routes Integration Tests", () => {
         avatar_public_id: null,
       });
       uploadAvatarImage.mockResolvedValue({
-        avatarUrl: "https://res.cloudinary.com/demo/image/upload/new-avatar.png",
+        avatarUrl:
+          "https://res.cloudinary.com/demo/image/upload/new-avatar.png",
         publicId: "bujo/avatars/new-avatar",
       });
       prisma.user.update.mockRejectedValue(new Error("DB update failed"));
@@ -280,6 +285,103 @@ describe("User API Routes Integration Tests", () => {
 
       expect(res.status).toBe(500);
       expect(deleteAvatarImage).toHaveBeenCalledWith("bujo/avatars/new-avatar");
+    });
+  });
+
+  describe("PATCH /api/users/me/name", () => {
+    it("未帶 Token 應該被擋下 (401)", async () => {
+      const res = await request(app)
+        .patch("/api/users/me/name")
+        .send({ display_name: "New Name" });
+
+      expect(res.status).toBe(401);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it("缺少 display_name 應該回傳 400", async () => {
+      const res = await request(app)
+        .patch("/api/users/me/name")
+        .set("Cookie", [`token=${validToken}`])
+        .send({});
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe("無效的名稱格式");
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it("display_name 非字串 (例如傳入數字) 應該回傳 400", async () => {
+      const res = await request(app)
+        .patch("/api/users/me/name")
+        .set("Cookie", [`token=${validToken}`])
+        .send({ display_name: 12345 });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe("無效的名稱格式");
+    });
+
+    it("display_name 為全空白字串，trim 後應該回傳 400", async () => {
+      const res = await request(app)
+        .patch("/api/users/me/name")
+        .set("Cookie", [`token=${validToken}`])
+        .send({ display_name: "     " });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe("顯示名稱不可為空白");
+    });
+
+    it("display_name 超過 50 個字元應該回傳 400", async () => {
+      const excessivelyLongName = "a".repeat(51);
+      const res = await request(app)
+        .patch("/api/users/me/name")
+        .set("Cookie", [`token=${validToken}`])
+        .send({ display_name: excessivelyLongName });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe("顯示名稱不可超過 50 個字元");
+    });
+
+    it("合法字串應該更新名稱並回傳 200 (測試包含前後空白的過濾)", async () => {
+      const inputName = "  Super Bob  ";
+      const expectedTrimmedName = "Super Bob";
+
+      prisma.user.update.mockResolvedValue({
+        id: testUserId,
+        display_name: expectedTrimmedName,
+        avatar_url: "https://example.com/avatar.png",
+      });
+
+      const res = await request(app)
+        .patch("/api/users/me/name")
+        .set("Cookie", [`token=${validToken}`])
+        .send({ display_name: inputName });
+
+      expect(res.status).toBe(200);
+      expect(res.body.user).toMatchObject({
+        id: testUserId,
+        display_name: expectedTrimmedName,
+      });
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: testUserId },
+        data: { display_name: expectedTrimmedName },
+        select: {
+          id: true,
+          display_name: true,
+          avatar_url: true,
+        },
+      });
+    });
+
+    it("資料庫層級發生錯誤時，應捕捉並回傳 500", async () => {
+      prisma.user.update.mockRejectedValue(new Error("Database deadlock"));
+
+      const res = await request(app)
+        .patch("/api/users/me/name")
+        .set("Cookie", [`token=${validToken}`])
+        .send({ display_name: "Valid Name" });
+
+      expect(res.status).toBe(500);
+      expect(res.body.message).toBe("伺服器內部錯誤");
     });
   });
 });
