@@ -12,6 +12,7 @@ jest.unstable_mockModule('../lib/prisma.js', () => {
     activitySchedule: { update: jest.fn() },
     activityParticipant: { findUnique: jest.fn(), update: jest.fn(), create: jest.fn() },
     activityAvailability: { createMany: jest.fn(), deleteMany: jest.fn() },
+    activityAvailabilityRange: { deleteMany: jest.fn() },
     friendship: { findMany: jest.fn(() => Promise.resolve([])) },
     notification: { create: jest.fn(), createMany: jest.fn() },
     $queryRaw: jest.fn(() => Promise.resolve([])),
@@ -529,6 +530,71 @@ describe('joinActivity - 報名後人數達標，立即判定成團（不用等�
   })
 })
 
+describe('joinActivity - Scenario C slot resubmission during recruiting', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    prisma.$transaction.mockImplementation((arg) => (Array.isArray(arg) ? Promise.all(arg) : arg(prisma)))
+    prisma.activity.updateMany.mockResolvedValue({ count: 1 })
+  })
+
+  function makeScenarioCActivity(overrides = {}) {
+    return makeActivity({
+      status: 'recruiting',
+      participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)],
+      candidateSlots: [
+        makeSlot('slot-a', {
+          slot_start: new Date('2026-08-01T10:00:00Z'),
+          slot_end: new Date('2026-08-01T12:00:00Z'),
+          availabilities: [{ candidate_slot_id: 'slot-a', user_id: PARTICIPANT_ID }],
+        }),
+        makeSlot('slot-b', {
+          slot_start: new Date('2026-08-02T10:00:00Z'),
+          slot_end: new Date('2026-08-02T12:00:00Z'),
+          availabilities: [],
+        }),
+      ],
+      schedule: {
+        requires_voting: true,
+        availability_mode: 'slot',
+        deadline_at: new Date('2099-01-01T00:00:00Z'),
+        confirmedSlot: null,
+      },
+      ...overrides,
+    })
+  }
+
+  it('已報名者於 recruiting 重新送 candidateSlotIds 時覆寫 ActivityAvailability，不新增 participant', async () => {
+    prisma.activity.findUnique.mockResolvedValue(makeScenarioCActivity())
+    prisma.activityParticipant.findUnique.mockResolvedValue({ id: 'participant-row-1', status: 'joined' })
+    const res = makeRes()
+
+    await joinActivity(makeReq({ userId: PARTICIPANT_ID, body: { candidateSlotIds: ['slot-b'] } }), res)
+
+    expect(prisma.activityAvailability.deleteMany).toHaveBeenCalledWith({
+      where: { user_id: PARTICIPANT_ID, candidateSlot: { activity_id: ACTIVITY_ID } },
+    })
+    expect(prisma.activityAvailability.createMany).toHaveBeenCalledWith({
+      data: [{ candidate_slot_id: 'slot-b', user_id: PARTICIPANT_ID }],
+      skipDuplicates: true,
+    })
+    expect(prisma.activityParticipant.create).not.toHaveBeenCalled()
+    expect(prisma.activityParticipant.update).not.toHaveBeenCalled()
+    expect(res.json).toHaveBeenCalledWith({ message: '報名成功' })
+  })
+
+  it.each(['voting', 'confirmed'])('已報名者於 %s 重新送 candidateSlotIds 時回 400 且不改資料', async (status) => {
+    prisma.activity.findUnique.mockResolvedValue(makeScenarioCActivity({ status }))
+    prisma.activityParticipant.findUnique.mockResolvedValue({ id: 'participant-row-1', status: 'joined' })
+    const res = makeRes()
+
+    await joinActivity(makeReq({ userId: PARTICIPANT_ID, body: { candidateSlotIds: ['slot-b'] } }), res)
+
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(prisma.activityAvailability.deleteMany).not.toHaveBeenCalled()
+    expect(prisma.activityAvailability.createMany).not.toHaveBeenCalled()
+  })
+})
+
 describe('getActivity - candidate_slots 附上目前使用者自己的勾選狀態', () => {
   it('回傳的 candidate_slots 依目前使用者是否已在該時段留下 availability 標記 is_selected', async () => {
     const slotA = makeSlot('slot-a', { availabilities: [{ candidate_slot_id: 'slot-a', user_id: PARTICIPANT_ID }] })
@@ -551,6 +617,90 @@ describe('getActivity - candidate_slots 附上目前使用者自己的勾選狀�
             expect.objectContaining({ id: 'slot-b', is_selected: false }),
           ],
         }),
+      }),
+    )
+  })
+})
+
+describe('getActivity - Activity detail exposes schedule variant', () => {
+  it.each([
+    [
+      'fixed',
+      {
+        schedule: {
+          requires_voting: false,
+          availability_mode: 'slot',
+          deadline_at: new Date('2099-01-01T00:00:00Z'),
+          confirmedSlot: null,
+        },
+        candidateSlots: [makeSlot('slot-fixed')],
+      },
+    ],
+    [
+      'find_time',
+      {
+        schedule: {
+          requires_voting: true,
+          availability_mode: 'range',
+          deadline_at: new Date('2099-01-01T00:00:00Z'),
+          fixed_date: new Date('2026-08-01T00:00:00Z'),
+          confirmedSlot: null,
+        },
+        candidateSlots: [],
+        availabilityRanges: [],
+      },
+    ],
+    [
+      'find_date',
+      {
+        schedule: {
+          requires_voting: true,
+          availability_mode: 'slot',
+          deadline_at: new Date('2099-01-01T00:00:00Z'),
+          confirmedSlot: null,
+        },
+        candidateSlots: [
+          makeSlot('slot-a', {
+            slot_start: new Date('2026-08-01T10:00:00Z'),
+            slot_end: new Date('2026-08-01T12:00:00Z'),
+          }),
+          makeSlot('slot-b', {
+            slot_start: new Date('2026-08-02T10:00:00Z'),
+            slot_end: new Date('2026-08-02T12:00:00Z'),
+          }),
+        ],
+      },
+    ],
+    [
+      'find_date_time',
+      {
+        schedule: {
+          requires_voting: true,
+          availability_mode: 'slot',
+          deadline_at: new Date('2099-01-01T00:00:00Z'),
+          confirmedSlot: null,
+        },
+        candidateSlots: [
+          makeSlot('slot-a', {
+            slot_start: new Date('2026-08-01T10:00:00Z'),
+            slot_end: new Date('2026-08-01T12:00:00Z'),
+          }),
+          makeSlot('slot-b', {
+            slot_start: new Date('2026-08-02T14:00:00Z'),
+            slot_end: new Date('2026-08-02T16:00:00Z'),
+          }),
+        ],
+      },
+    ],
+  ])('回傳 schedule_variant: %s', async (scheduleVariant, overrides) => {
+    prisma.activity.findUnique.mockResolvedValue(makeActivity(overrides))
+    const res = makeRes()
+
+    await getActivity(makeReq(), res)
+
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activity: expect.objectContaining({ schedule_variant: scheduleVariant }),
       }),
     )
   })

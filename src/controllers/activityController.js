@@ -347,7 +347,7 @@ export async function getActivity(req, res) {
       if (isRangeMode) {
         const windowStart = sched.time_window_start ?? sched.fixed_date
         const windowEnd = sched.time_window_end ?? new Date(sched.fixed_date.getTime() + 24 * 60 * 60 * 1000)
-        const submittedRanges = activity.availabilityRanges.map((r) => ({ start: r.range_start, end: r.range_end }))
+        const submittedRanges = getJoinedAvailabilityRanges(activity)
         // 建立者永遠算「有空」，用一段涵蓋整個基準範圍的虛擬 range 表示，不需要真實資料列
         const allRanges = [...submittedRanges, { start: windowStart, end: windowEnd }]
         decisionCandidates = computeRangeRanking(allRanges, windowStart, windowEnd, joinedCount)
@@ -380,6 +380,7 @@ export async function getActivity(req, res) {
         creator: activity.creator,
         requires_voting: sched?.requires_voting ?? false,
         availability_mode: sched?.availability_mode ?? 'slot',
+        schedule_variant: deriveScheduleVariant(sched, activity.candidateSlots),
         deadline_at: sched?.deadline_at ?? null,
         fixed_date: sched?.fixed_date ? formatISODate(sched.fixed_date) : null,
         time_window_start: sched?.time_window_start ? formatHHMM(sched.time_window_start) : null,
@@ -435,22 +436,27 @@ export async function joinActivity(req, res) {
         return { status: 400, message: '此活動已截止報名' }
       }
 
-      const isRangeMode = activity.schedule?.availability_mode === 'range'
-
       const existing = await tx.activityParticipant.findUnique({
         where: { activity_id_user_id: { activity_id: id, user_id: userId } },
       })
-      // range 模式允許已報名者在 recruiting/voting 階段重新送出可用時間；其餘情境維持原行為不可重複報名
-      const isResubmission = isRangeMode && existing?.status === 'joined'
+      const isRangeMode = activity.schedule?.availability_mode === 'range'
+      const requiresVoting = !!activity.schedule?.requires_voting
+      const isFindDateMode = deriveScheduleVariant(activity.schedule, activity.candidateSlots) === 'find_date'
+      // range 模式允許已報名者在 recruiting/voting 階段重送可用時間；Mode C 只允許 recruiting 重選日期
+      const isRangeResubmission = isRangeMode && existing?.status === 'joined'
+      const isFindDateResubmission = !isRangeMode && requiresVoting && isFindDateMode && existing?.status === 'joined'
+      const isResubmission = isRangeResubmission || isFindDateResubmission
 
       if (!isResubmission && activity.status !== 'recruiting') {
         return { status: 400, message: '此活動不在揪團中' }
       }
-      if (isResubmission && activity.status !== 'recruiting' && activity.status !== 'voting') {
+      if (isRangeResubmission && activity.status !== 'recruiting' && activity.status !== 'voting') {
+        return { status: 400, message: '此活動不在揪團中' }
+      }
+      if (isFindDateResubmission && activity.status !== 'recruiting') {
         return { status: 400, message: '此活動不在揪團中' }
       }
 
-      const requiresVoting = !!activity.schedule?.requires_voting
       let availabilityData = []
       let rangesData = []
       if (isRangeMode) {
@@ -513,6 +519,11 @@ export async function joinActivity(req, res) {
         await tx.activityAvailabilityRange.deleteMany({ where: { activity_id: id, user_id: userId } })
         await tx.activityAvailabilityRange.createMany({ data: rangesData })
       } else if (requiresVoting) {
+        if (isFindDateResubmission) {
+          await tx.activityAvailability.deleteMany({
+            where: { user_id: userId, candidateSlot: { activity_id: id } },
+          })
+        }
         await tx.activityAvailability.createMany({ data: availabilityData, skipDuplicates: true })
       }
 
@@ -600,7 +611,7 @@ export async function confirmFormation(req, res) {
       const joinedCount = activity.participants.length
       const windowStart = sched.time_window_start ?? sched.fixed_date
       const windowEnd = sched.time_window_end ?? new Date(sched.fixed_date.getTime() + 24 * 60 * 60 * 1000)
-      const submittedRanges = activity.availabilityRanges.map((r) => ({ start: r.range_start, end: r.range_end }))
+      const submittedRanges = getJoinedAvailabilityRanges(activity)
       const allRanges = [...submittedRanges, { start: windowStart, end: windowEnd }]
       const ranking = computeRangeRanking(allRanges, windowStart, windowEnd, joinedCount)
       const candidates = [...ranking.perfect_overlap, ...ranking.partial_overlap]
@@ -756,6 +767,9 @@ export async function cancelJoin(req, res) {
       prisma.activityAvailability.deleteMany({
         where: { user_id: userId, candidateSlot: { activity_id: id } },
       }),
+      prisma.activityAvailabilityRange.deleteMany({
+        where: { activity_id: id, user_id: userId },
+      }),
     ])
 
     return res.json({ message: '已取消報名' })
@@ -786,6 +800,42 @@ function getLeaderSlots(candidateSlots, votes, totalParticipants) {
 function decideFormationOutcome(candidateSlots, votes, totalParticipants) {
   const { leaders, isUnanimous } = getLeaderSlots(candidateSlots, votes, totalParticipants)
   return isUnanimous ? { status: 'confirmed', winningSlot: leaders[0] } : { status: 'voting', winningSlot: null }
+}
+
+function deriveScheduleVariant(schedule, candidateSlots = []) {
+  if (!schedule?.requires_voting) return 'fixed'
+  if (schedule.availability_mode === 'range') return 'find_time'
+  return isUniformMultiDateSlotVoting(candidateSlots) ? 'find_date' : 'find_date_time'
+}
+
+function getJoinedAvailabilityRanges(activity) {
+  const joinedUserIds = new Set(activity.participants.map((p) => p.user_id))
+  return (activity.availabilityRanges ?? [])
+    .filter((r) => joinedUserIds.has(r.user_id))
+    .map((r) => ({ start: r.range_start, end: r.range_end }))
+}
+
+function isUniformMultiDateSlotVoting(candidateSlots) {
+  if (candidateSlots.length < 2) return false
+
+  const dates = new Set(candidateSlots.map((slot) => formatISODate(slot.slot_start)))
+  if (dates.size < 2) return false
+
+  const [first] = candidateSlots
+  const shape = getSlotTimeShape(first)
+  return candidateSlots.every((slot) => getSlotTimeShape(slot) === shape)
+}
+
+function getSlotTimeShape(slot) {
+  const duration = slot.slot_end.getTime() - slot.slot_start.getTime()
+  return [
+    slot.all_day ? 'all_day' : 'timed',
+    slot.slot_start.getHours(),
+    slot.slot_start.getMinutes(),
+    slot.slot_end.getHours(),
+    slot.slot_end.getMinutes(),
+    duration,
+  ].join(':')
 }
 
 // 情境二重疊排序：以 60 分鐘為間隔切候選格，計算每格有多少人（含建立者，由呼叫端併入 ranges）回報的可用時間涵蓋該格，

@@ -33,6 +33,7 @@ const {
   getActivity,
   joinActivity,
   confirmFormation,
+  cancelJoin,
 } = await import('../controllers/activityController.js')
 const { default: prisma } = await import('../lib/prisma.js')
 
@@ -348,6 +349,72 @@ describe('getActivity - range 模式 decision_candidates', () => {
         }),
       }),
     )
+  })
+
+  it('取消報名者殘留的 availability ranges 不計入 perfect_overlap 或 partial_overlap', async () => {
+    const activity = makeRangeActivity({
+      status: 'voting',
+      participants: [makeParticipant(CREATOR_ID)],
+      availabilityRanges: [
+        {
+          user_id: PARTICIPANT_ID,
+          range_start: new Date(2026, 7, 1, 19, 0),
+          range_end: new Date(2026, 7, 1, 20, 0),
+        },
+      ],
+      schedule: {
+        requires_voting: true,
+        availability_mode: 'range',
+        deadline_at: new Date('2020-01-01T00:00:00Z'),
+        fixed_date: new Date(2026, 7, 1),
+        time_window_start: new Date(2026, 7, 1, 18, 0),
+        time_window_end: new Date(2026, 7, 1, 20, 0),
+        vote_deadline_at: new Date('2099-01-01T00:00:00Z'),
+        confirmedSlot: null,
+      },
+    })
+    prisma.activity.findUnique.mockResolvedValue(activity)
+    const res = makeRes()
+
+    await getActivity(makeReq(), res)
+
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activity: expect.objectContaining({
+          decision_candidates: {
+            perfect_overlap: [
+              expect.objectContaining({ slot_start: new Date(2026, 7, 1, 18, 0), count: 1 }),
+              expect.objectContaining({ slot_start: new Date(2026, 7, 1, 19, 0), count: 1 }),
+            ],
+            partial_overlap: [],
+          },
+        }),
+      }),
+    )
+  })
+})
+
+describe('cancelJoin - range 模式報名取消清除 availability ranges', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    prisma.$transaction.mockImplementation((arg) => (Array.isArray(arg) ? Promise.all(arg) : arg(prisma)))
+  })
+
+  it('Range-mode cancellation removes stored availability ranges', async () => {
+    prisma.activity.findUnique.mockResolvedValue(makeRangeActivity({ status: 'recruiting' }))
+    prisma.activityParticipant.findUnique.mockResolvedValue({ id: 'participant-row-1', status: 'joined' })
+    const res = makeRes()
+
+    await cancelJoin(makeReq({ userId: PARTICIPANT_ID }), res)
+
+    expect(prisma.activityParticipant.update).toHaveBeenCalledWith({
+      where: { id: 'participant-row-1' },
+      data: { status: 'left' },
+    })
+    expect(prisma.activityAvailabilityRange.deleteMany).toHaveBeenCalledWith({
+      where: { activity_id: ACTIVITY_ID, user_id: PARTICIPANT_ID },
+    })
+    expect(res.json).toHaveBeenCalledWith({ message: '已取消報名' })
   })
 })
 
