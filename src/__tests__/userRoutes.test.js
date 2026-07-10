@@ -384,4 +384,102 @@ describe("User API Routes Integration Tests", () => {
       expect(res.body.message).toBe("伺服器內部錯誤");
     });
   });
+
+  describe("PATCH /api/users/me/bio", () => {
+    it("未帶 Token 應該被擋下 (401)", async () => {
+      const res = await request(app)
+        .patch("/api/users/me/bio")
+        .send({ bio: "這是一段新簡介" });
+
+      expect(res.status).toBe(401);
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it("bio 傳入非字串型別 (例如數字或陣列)，應該被 Controller 擋下 (400)", async () => {
+      const res = await request(app)
+        .patch("/api/users/me/bio")
+        .set("Cookie", [`token=${validToken}`])
+        .send({ bio: 12345 });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe("無效的簡介格式");
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it("bio 超過 150 個字元，應該回傳 400 拒絕寫入", async () => {
+      const excessivelyLongBio = "a".repeat(151);
+      const res = await request(app)
+        .patch("/api/users/me/bio")
+        .set("Cookie", [`token=${validToken}`])
+        .send({ bio: excessivelyLongBio });
+
+      expect(res.status).toBe(400);
+      expect(res.body.message).toBe("簡介不可超過 150 個字元");
+      expect(prisma.user.update).not.toHaveBeenCalled();
+    });
+
+    it("合法字串應該更新簡介並回傳 200 (包含前後空白過濾)", async () => {
+      const inputBio = "  這是我熱愛寫程式的簡介。  ";
+      const expectedTrimmedBio = "這是我熱愛寫程式的簡介。";
+
+      prisma.user.update.mockResolvedValue({
+        id: testUserId,
+        display_name: "Test User",
+        bio: expectedTrimmedBio,
+      });
+
+      const res = await request(app)
+        .patch("/api/users/me/bio")
+        .set("Cookie", [`token=${validToken}`])
+        .send({ bio: inputBio });
+
+      expect(res.status).toBe(200);
+      expect(res.body.user).toMatchObject({
+        id: testUserId,
+        bio: expectedTrimmedBio,
+      });
+
+      expect(prisma.user.update).toHaveBeenCalledWith({
+        where: { id: testUserId },
+        data: { bio: expectedTrimmedBio },
+        select: {
+          id: true,
+          display_name: true,
+          bio: true,
+        },
+      });
+    });
+
+    it("允許傳入空字串來清空簡介 (200)", async () => {
+      prisma.user.update.mockResolvedValue({
+        id: testUserId,
+        display_name: "Test User",
+        bio: "",
+      });
+
+      const res = await request(app)
+        .patch("/api/users/me/bio")
+        .set("Cookie", [`token=${validToken}`])
+        .send({ bio: "   " });
+
+      expect(res.status).toBe(200);
+      expect(prisma.user.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          data: { bio: "" },
+        }),
+      );
+    });
+
+    it("資料庫層級發生錯誤時，應捕捉並回傳 500", async () => {
+      prisma.user.update.mockRejectedValue(new Error("Database timeout"));
+
+      const res = await request(app)
+        .patch("/api/users/me/bio")
+        .set("Cookie", [`token=${validToken}`])
+        .send({ bio: "正常的簡介" });
+
+      expect(res.status).toBe(500);
+      expect(res.body.message).toBe("伺服器內部錯誤");
+    });
+  });
 });
