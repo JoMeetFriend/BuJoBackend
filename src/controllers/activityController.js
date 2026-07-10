@@ -52,6 +52,12 @@ export async function createActivity(req, res) {
     } else {
       return res.status(400).json({ message: '請設定統一時間或選擇整日' })
     }
+    // 情境三候選日期不連續，投票理應開放到「最晚」候選日才截止，不能像情境二一樣只看
+    // 單一固定日期——用最早候選日當投票截止基準，會讓比較晚的候選日還沒到就被迫腰斬投票
+    const latestSlotStart = new Date(
+      Math.max(...candidateSlotsData.map((s) => s.slot_start.getTime())),
+    )
+    scheduleExtra = { availability_mode: 'slot', vote_deadline_at: latestSlotStart }
   } else if (isVotingD) {
     if (!dateSlots.every((s) => s.date && s.startTime && s.endTime)) {
       return res.status(400).json({ message: '每個候選日期都需要設定時段' })
@@ -231,7 +237,13 @@ export async function getActivity(req, res) {
     let confirmedSlot = sched?.confirmedSlot ?? null
     const joinedCount = activity.participants.length
 
-    if (currentStatus === 'recruiting' && sched && now >= sched.deadline_at) {
+    // 情境三候選日期不連續，強制成團判定要看最晚候選日（vote_deadline_at），不是
+    // deadline_at（創建者設定的提前提醒，錨定在最早候選日）——不然最早候選日一到，
+    // 比較晚的候選日投票就被迫腰斬
+    const isScenarioC = deriveScheduleVariant(sched, activity.candidateSlots) === 'find_date'
+    const recruitingDeadline = isScenarioC && sched?.vote_deadline_at ? sched.vote_deadline_at : sched?.deadline_at
+
+    if (currentStatus === 'recruiting' && sched && now >= recruitingDeadline) {
       const target = activity.participant_target
       let winningSlot = null
       let nextStatus
