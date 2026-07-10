@@ -311,6 +311,41 @@ describe('getActivity - range 模式 decision_candidates', () => {
       }),
     )
   })
+
+  it('回傳的 activity 帶上 fixed_date/time_window_start/time_window_end，供前端 AvailabilityPickerModal 使用', async () => {
+    const fixedDate = new Date(2026, 7, 1)
+    const timeWindowStart = new Date(2026, 7, 1, 18, 0)
+    const timeWindowEnd = new Date(2026, 7, 1, 20, 0)
+    const activity = makeRangeActivity({
+      status: 'recruiting',
+      participants: [makeParticipant(CREATOR_ID)],
+      availabilityRanges: [],
+      schedule: {
+        requires_voting: true,
+        availability_mode: 'range',
+        deadline_at: new Date('2099-01-01T00:00:00Z'),
+        fixed_date: fixedDate,
+        time_window_start: timeWindowStart,
+        time_window_end: timeWindowEnd,
+        vote_deadline_at: new Date('2099-01-01T00:00:00Z'),
+        confirmedSlot: null,
+      },
+    })
+    prisma.activity.findUnique.mockResolvedValue(activity)
+    const res = makeRes()
+
+    await getActivity(makeReq(), res)
+
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activity: expect.objectContaining({
+          fixed_date: fixedDate,
+          time_window_start: timeWindowStart,
+          time_window_end: timeWindowEnd,
+        }),
+      }),
+    )
+  })
 })
 
 describe('getActivity - vote_deadline_at 逾時自動取消（情境二專屬）', () => {

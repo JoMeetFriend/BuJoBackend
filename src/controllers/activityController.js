@@ -381,6 +381,9 @@ export async function getActivity(req, res) {
         requires_voting: sched?.requires_voting ?? false,
         availability_mode: sched?.availability_mode ?? 'slot',
         deadline_at: sched?.deadline_at ?? null,
+        fixed_date: sched?.fixed_date ?? null,
+        time_window_start: sched?.time_window_start ?? null,
+        time_window_end: sched?.time_window_end ?? null,
         candidate_slots: activity.candidateSlots.map((s) => ({
           id: s.id,
           slot_start: s.slot_start,
