@@ -9,8 +9,12 @@ export const getAcceptedFriendsList = async (currentUserId) => {
       ],
     },
     include: {
-      requester: { select: { id: true, display_name: true, avatar_url: true } },
-      receiver: { select: { id: true, display_name: true, avatar_url: true } },
+      requester: {
+        select: { id: true, display_name: true, avatar_url: true, bio: true },
+      },
+      receiver: {
+        select: { id: true, display_name: true, avatar_url: true, bio: true },
+      },
     },
   });
 
@@ -18,7 +22,10 @@ export const getAcceptedFriendsList = async (currentUserId) => {
     const friendUser =
       f.requester_id === currentUserId ? f.receiver : f.requester;
     return {
-      ...friendUser,
+      id: friendUser.id,
+      display_name: friendUser.display_name,
+      avatar_url: friendUser.avatar_url,
+      bio: friendUser.bio,
       friendship_id: f.id,
     };
   });
