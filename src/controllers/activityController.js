@@ -62,7 +62,16 @@ export async function createActivity(req, res) {
     if (!dateSlots.every((s) => s.date && s.startTime && s.endTime)) {
       return res.status(400).json({ message: '每個候選日期都需要設定時段' })
     }
+    // 每個候選日期只能對應一組時段，同一天出現兩筆會讓子區間交集運算跟參與者端的窗口選取產生歧義
+    if (new Set(dateSlots.map((s) => s.date)).size !== dateSlots.length) {
+      return res.status(400).json({ message: '每個候選日期只能設定一組時段' })
+    }
     candidateSlotsData = buildDateSlots(dateSlots)
+    // 情境四候選時段跨多個不連續日期，跟情境三同理，投票理應開放到「最晚」候選時段才截止
+    const latestSlotStart = new Date(
+      Math.max(...candidateSlotsData.map((s) => s.slot_start.getTime())),
+    )
+    scheduleExtra = { availability_mode: 'slot', vote_deadline_at: latestSlotStart }
   } else {
     if (!startDate) {
       return res.status(400).json({ message: '開始日期為必填' })
@@ -237,11 +246,12 @@ export async function getActivity(req, res) {
     let confirmedSlot = sched?.confirmedSlot ?? null
     const joinedCount = activity.participants.length
 
-    // 情境三候選日期不連續，強制成團判定要看最晚候選日（vote_deadline_at），不是
-    // deadline_at（創建者設定的提前提醒，錨定在最早候選日）——不然最早候選日一到，
-    // 比較晚的候選日投票就被迫腰斬
-    const isScenarioC = deriveScheduleVariant(sched, activity.candidateSlots) === 'find_date'
-    const recruitingDeadline = isScenarioC && sched?.vote_deadline_at ? sched.vote_deadline_at : sched?.deadline_at
+    // 情境三／四候選時段不連續，強制成團判定要看最晚候選時段（vote_deadline_at），不是
+    // deadline_at（創建者設定的提前提醒，錨定在最早候選日）——不然最早候選時段一到，
+    // 比較晚的候選時段投票就被迫腰斬
+    const scheduleVariant = deriveScheduleVariant(sched, activity.candidateSlots)
+    const usesVoteDeadline = scheduleVariant === 'find_date' || scheduleVariant === 'find_date_time'
+    const recruitingDeadline = usesVoteDeadline && sched?.vote_deadline_at ? sched.vote_deadline_at : sched?.deadline_at
 
     if (currentStatus === 'recruiting' && sched && now >= recruitingDeadline) {
       const target = activity.participant_target
@@ -363,15 +373,36 @@ export async function getActivity(req, res) {
         // 建立者永遠算「有空」，用一段涵蓋整個基準範圍的虛擬 range 表示，不需要真實資料列
         const allRanges = [...submittedRanges, { start: windowStart, end: windowEnd }]
         decisionCandidates = computeRangeRanking(allRanges, windowStart, windowEnd, joinedCount)
+      } else if (scheduleVariant === 'find_date_time') {
+        // 情境四：每個候選時段各自跑一次交集運算，讓建立者看到窗口內實際重疊的窄時段，不只是票數
+        decisionCandidates = activity.candidateSlots
+          .map((s) => {
+            const ranking = computeSlotOverlapRanking(s)
+            return {
+              id: s.id,
+              slot_start: s.slot_start,
+              slot_end: s.slot_end,
+              count: s.availabilities.length,
+              perfect_overlap: ranking.perfect_overlap,
+              partial_overlap: ranking.partial_overlap,
+            }
+          })
+          .sort((a, b) => b.count - a.count)
       } else {
+        // 情境三：回傳所有候選時段的完整支持度排名，不再只回傳並列最高票
         const availabilities = activity.candidateSlots.flatMap((s) => s.availabilities)
-        const { leaders } = getLeaderSlots(activity.candidateSlots, availabilities, joinedCount)
-        decisionCandidates = leaders.map((s) => ({
-          id: s.id,
-          slot_start: s.slot_start,
-          slot_end: s.slot_end,
-          count: availabilities.filter((a) => a.candidate_slot_id === s.id).length,
-        }))
+        decisionCandidates = activity.candidateSlots
+          .map((s) => {
+            const count = availabilities.filter((a) => a.candidate_slot_id === s.id).length
+            return {
+              id: s.id,
+              slot_start: s.slot_start,
+              slot_end: s.slot_end,
+              count,
+              is_unanimous: count > 0 && count === joinedCount,
+            }
+          })
+          .sort((a, b) => b.count - a.count)
       }
     }
 
@@ -397,13 +428,20 @@ export async function getActivity(req, res) {
         fixed_date: sched?.fixed_date ? formatISODate(sched.fixed_date) : null,
         time_window_start: sched?.time_window_start ? formatHHMM(sched.time_window_start) : null,
         time_window_end: sched?.time_window_end ? formatHHMM(sched.time_window_end) : null,
-        candidate_slots: activity.candidateSlots.map((s) => ({
-          id: s.id,
-          slot_start: s.slot_start,
-          slot_end: s.slot_end,
-          all_day: s.all_day,
-          is_selected: s.availabilities.some((a) => a.user_id === userId),
-        })),
+        candidate_slots: activity.candidateSlots.map((s) => {
+          const mine = s.availabilities.find((a) => a.user_id === userId)
+          return {
+            id: s.id,
+            slot_start: s.slot_start,
+            slot_end: s.slot_end,
+            all_day: s.all_day,
+            is_selected: !!mine,
+            // 情境四：這個人自己存的子區間，讓前端「修改報名時段」重開 picker 時可以預填
+            my_range: mine?.range_start && mine?.range_end
+              ? { start: mine.range_start.toISOString(), end: mine.range_end.toISOString() }
+              : null,
+          }
+        }),
         // range 模式下這個人自己先前送出的可用時間，讓前端「修改時間」重開 picker 時可以預填，
         // 不用逼使用者重新選一次；非 range 模式一律回空陣列
         my_ranges: isRangeMode
@@ -430,7 +468,7 @@ export async function getActivity(req, res) {
 export async function joinActivity(req, res) {
   const { id } = req.params
   const userId = req.user.userId
-  const { candidateSlotIds, ranges } = req.body
+  const { candidateSlotIds, ranges, candidateSlotRanges } = req.body
 
   try {
     const outcome = await prisma.$transaction(async (tx) => {
@@ -460,8 +498,9 @@ export async function joinActivity(req, res) {
       })
       const isRangeMode = activity.schedule?.availability_mode === 'range'
       const requiresVoting = !!activity.schedule?.requires_voting
-      const isFindDateMode = deriveScheduleVariant(activity.schedule, activity.candidateSlots) === 'find_date'
-      // range 模式跟 Mode C 一樣，已報名者只能在 recruiting 階段重送答案——voting 階段建立者已經在看
+      const scheduleVariant = deriveScheduleVariant(activity.schedule, activity.candidateSlots)
+      const isFindDateMode = scheduleVariant === 'find_date' || scheduleVariant === 'find_date_time'
+      // range 模式跟 Mode C/D 一樣，已報名者只能在 recruiting 階段重送答案——voting 階段建立者已經在看
       // 彙總後的決選畫面，這時候還讓人改答案會讓建立者看到的東西跟實際不符
       const isRangeResubmission = isRangeMode && existing?.status === 'joined'
       const isFindDateResubmission = !isRangeMode && requiresVoting && isFindDateMode && existing?.status === 'joined'
@@ -501,11 +540,37 @@ export async function joinActivity(req, res) {
         if (ids.length === 0) {
           return { status: 400, message: '請選擇至少一個候選時段' }
         }
-        const validIds = new Set(activity.candidateSlots.map((s) => s.id))
-        if (!ids.every((sid) => validIds.has(sid))) {
+        const slotsById = new Map(activity.candidateSlots.map((s) => [s.id, s]))
+        if (!ids.every((sid) => slotsById.has(sid))) {
           return { status: 400, message: '候選時段不存在' }
         }
-        availabilityData = ids.map((candidate_slot_id) => ({ candidate_slot_id, user_id: userId }))
+
+        // 情境四：參與者可以額外附上在候選時段窗口內自選的子區間，僅供建立者決策參考顯示，
+        // 不信任前端已經做過的邊界檢查，寫入前重新驗證落在對應候選時段的 slot_start~slot_end 之間
+        const rangeList = Array.isArray(candidateSlotRanges) ? candidateSlotRanges : []
+        const rangeBySlotId = new Map()
+        for (const r of rangeList) {
+          const slot = slotsById.get(r.candidateSlotId)
+          if (!slot) {
+            return { status: 400, message: '候選時段不存在' }
+          }
+          const rangeStart = new Date(r.rangeStart)
+          const rangeEnd = new Date(r.rangeEnd)
+          if (rangeStart < slot.slot_start || rangeEnd > slot.slot_end) {
+            return { status: 400, message: '提交的子區間超出候選時段範圍' }
+          }
+          rangeBySlotId.set(r.candidateSlotId, { rangeStart, rangeEnd })
+        }
+
+        availabilityData = ids.map((candidate_slot_id) => {
+          const range = rangeBySlotId.get(candidate_slot_id)
+          return {
+            candidate_slot_id,
+            user_id: userId,
+            range_start: range?.rangeStart ?? null,
+            range_end: range?.rangeEnd ?? null,
+          }
+        })
       }
 
       const currentCount = activity.participants.length
@@ -544,37 +609,16 @@ export async function joinActivity(req, res) {
         await tx.activityAvailability.createMany({ data: availabilityData, skipDuplicates: true })
       }
 
-      // 人數一達標就立刻判定：免投票直接成團；投票制則交給目前票數決定直接成團或進入 voting 讓建立者選
-      // range 模式沒有「投票達成共識」的概念，成團一律交由建立者手動 confirmFormation 決定
+      // 人數一達標只提醒建立者，成團永遠要建立者手動 confirmFormation 決定，不自動判定——
+      // 免投票（情境一）維持 recruiting 不變狀態；投票制（情境三／四）不論票數/交集是否一致，
+      // 一律轉 voting 讓建立者去看排名清單再決定。range 模式本來就沒有這個自動判定，不受影響
       if (targetReached && !isRangeMode) {
-        const outcome = requiresVoting
-          ? decideFormationOutcome(
-              activity.candidateSlots,
-              [...activity.candidateSlots.flatMap((s) => s.availabilities), ...availabilityData],
-              newCount,
-            )
-          : { status: 'confirmed', winningSlot: activity.candidateSlots[0] }
-
-        await tx.activity.update({ where: { id }, data: { status: outcome.status } })
-
-        if (outcome.status === 'confirmed') {
-          await tx.activitySchedule.update({
-            where: { activity_id: id },
-            data: { confirmed_slot_id: outcome.winningSlot.id },
-          })
-          await tx.notification.createMany({
-            data: activity.participants.map((p) => ({
-              user_id: p.user_id,
-              type: 'activity_confirmed',
-              reference_id: id,
-              reference_type: 'activity',
-            })),
-          })
-        } else {
-          await tx.notification.create({
-            data: { user_id: activity.creator_id, type: 'time_to_pick', reference_id: id, reference_type: 'activity' },
-          })
+        if (requiresVoting) {
+          await tx.activity.update({ where: { id }, data: { status: 'voting' } })
         }
+        await tx.notification.create({
+          data: { user_id: activity.creator_id, type: 'time_to_pick', reference_id: id, reference_type: 'activity' },
+        })
       }
 
       return null
@@ -615,6 +659,7 @@ export async function confirmFormation(req, res) {
 
     const requiresVoting = !!activity.schedule?.requires_voting
     const isRangeMode = activity.schedule?.availability_mode === 'range'
+    const scheduleVariant = deriveScheduleVariant(activity.schedule, activity.candidateSlots)
     let winningSlot
     let newCandidateSlotData = null
 
@@ -644,16 +689,34 @@ export async function confirmFormation(req, res) {
     } else if (!requiresVoting) {
       if (activity.status !== 'recruiting') return res.status(400).json({ message: '此活動狀態不允許確認成團' })
       winningSlot = activity.candidateSlots[0]
+    } else if (scheduleVariant === 'find_date_time') {
+      // 情境四：建立者從交集運算算出的窄窗口裡挑一段，不是直接採用候選時段的原始邊界
+      if (activity.status !== 'recruiting' && activity.status !== 'voting') {
+        return res.status(400).json({ message: '此活動狀態不允許確認成團' })
+      }
+      if (!candidateSlotId) return res.status(400).json({ message: '請選擇要確認的候選時段' })
+      const slot = activity.candidateSlots.find((s) => s.id === candidateSlotId)
+      if (!slot) return res.status(400).json({ message: '此候選時段不在可確認的名單中' })
+      if (!slotStart || !slotEnd) return res.status(400).json({ message: '請選擇要確認的時段' })
+
+      const ranking = computeSlotOverlapRanking(slot)
+      const candidates = [...ranking.perfect_overlap, ...ranking.partial_overlap]
+      const start = new Date(slotStart)
+      const end = new Date(slotEnd)
+      const matched = candidates.find(
+        (c) => c.slot_start.getTime() === start.getTime() && c.slot_end.getTime() === end.getTime(),
+      )
+      if (!matched) return res.status(400).json({ message: '此候選時段不在可確認的名單中' })
+
+      newCandidateSlotData = { slot_start: start, slot_end: end, all_day: false }
     } else {
+      // 情境三：建立者可以自由選任何一個真實存在的候選時段，不限並列最高票
       if (activity.status !== 'recruiting' && activity.status !== 'voting') {
         return res.status(400).json({ message: '此活動狀態不允許確認成團' })
       }
       if (!candidateSlotId) return res.status(400).json({ message: '請選擇要確認的候選時段' })
 
-      const joinedCount = activity.participants.length
-      const availabilities = activity.candidateSlots.flatMap((s) => s.availabilities)
-      const { leaders } = getLeaderSlots(activity.candidateSlots, availabilities, joinedCount)
-      winningSlot = leaders.find((s) => s.id === candidateSlotId)
+      winningSlot = activity.candidateSlots.find((s) => s.id === candidateSlotId)
       if (!winningSlot) return res.status(400).json({ message: '此候選時段不在可確認的名單中' })
     }
 
@@ -667,8 +730,9 @@ export async function confirmFormation(req, res) {
       })
       if (count === 0) return false
 
-      // range 模式在建立活動、recruiting/voting 期間都不建立 ActivityCandidateSlot，只在確認成團的當下才臨時建立這一筆
-      const confirmedSlotId = isRangeMode
+      // range 模式跟情境四都是在確認成團的當下才臨時建立候選時段（存算出來的窄窗口），
+      // 不是沿用建立活動時就存在的候選時段原始邊界
+      const confirmedSlotId = isRangeMode || scheduleVariant === 'find_date_time'
         ? (await tx.activityCandidateSlot.create({ data: { activity_id: id, ...newCandidateSlotData } })).id
         : winningSlot.id
 
@@ -888,6 +952,18 @@ export function computeRangeRanking(ranges, windowStart, windowEnd, totalPartici
     perfect_overlap: perfect.map(toEntry),
     partial_overlap: partial.map(toEntry),
   }
+}
+
+// 情境四子區間交集運算：重用 computeRangeRanking 的切格計數邏輯，範圍限定在這個候選時段自己的
+// slot_start~slot_end；沒有提交子區間的參與者視為整個候選時段時間都覆蓋，總人數以投給這個
+// candidate slot 的人數為準（不是整個活動的報名人數），因為交集運算只在乎「選了這個候選時段的人」彼此之間的重疊
+export function computeSlotOverlapRanking(slot) {
+  const ranges = slot.availabilities.map((a) =>
+    a.range_start && a.range_end
+      ? { start: a.range_start, end: a.range_end }
+      : { start: slot.slot_start, end: slot.slot_end },
+  )
+  return computeRangeRanking(ranges, slot.slot_start, slot.slot_end, slot.availabilities.length)
 }
 
 function formatCard(act, userId) {
