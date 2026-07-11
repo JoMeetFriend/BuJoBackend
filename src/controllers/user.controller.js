@@ -98,3 +98,31 @@ export const updateMyName = async (req, res) => {
     return res.status(500).json({ message: "伺服器內部錯誤" });
   }
 };
+
+export const updateMyBio = async (req, res) => {
+  try {
+    const { bio } = req.body;
+    const currentUserId = req.user.userId;
+
+    if (bio === undefined || typeof bio !== "string") {
+      return res.status(400).json({ message: "無效的簡介格式" });
+    }
+
+    const trimmedBio = bio.trim();
+
+    if (trimmedBio.length > 150) {
+      return res.status(400).json({ message: "簡介不可超過 150 個字元" });
+    }
+
+    const user = await userService.updateUserBio(currentUserId, trimmedBio);
+
+    if (!user) {
+      throw new Error("Failed to return user object from database");
+    }
+
+    return res.status(200).json({ user });
+  } catch (error) {
+    console.error("Update Bio Controller Error:", error);
+    return res.status(500).json({ message: "伺服器內部錯誤" });
+  }
+};

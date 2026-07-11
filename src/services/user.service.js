@@ -58,3 +58,15 @@ export const updateUserName = async (userId, displayName) => {
     },
   });
 };
+
+export const updateUserBio = async (userId, bio) => {
+  return prisma.user.update({
+    where: { id: userId },
+    data: { bio: bio },
+    select: {
+      id: true,
+      display_name: true,
+      bio: true,
+    },
+  });
+};

@@ -14,6 +14,8 @@ router.patch(
 
 router.patch("/me/name", authenticate, userController.updateMyName);
 
+router.patch("/me/bio", authenticate, userController.updateMyBio);
+
 router.get("/search", authenticate, userController.searchUsers);
 
 export default router;
