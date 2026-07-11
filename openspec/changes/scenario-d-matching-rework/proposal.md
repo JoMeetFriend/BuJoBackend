@@ -30,3 +30,27 @@
 - Affected specs: scenario-d-availability-picker-api
 - Affected code:
   - Modified: src/controllers/activityController.js, prisma/schema.prisma
+
+## Addendum：決策票數/交集運算排除建立者，出席人數統計不受影響
+
+### Why
+
+情境四手動流程驗證時，實測發現一個活動只有 1 個真人參與者，`decision_candidates` 卻顯示某個窄窗口「完全重疊 2 票」。追查後發現：`createActivity` 的 `isVotingC || isVotingD` 分支會自動幫建立者寫入一筆沒有 `range_start`/`range_end` 的 `ActivityAvailability`（`creatorSlotIndexes` 機制），這筆記錄在交集運算裡 fallback 成「整個候選時段都算有空」。
+
+「建立者對自己建立的候選時段有空」這件事本身是事實——`slot_start`~`slot_end` 就是建立者自己設定的邊界，這個事實已經被資料模型結構性保證，不需要另外寫一筆資料證明。問題出在系統把這個**恆真的背景假設**，具體化成一筆跟參與者投票長得一模一樣的 `ActivityAvailability` 記錄，丟進同一套計票函式——導致「真人主動選擇這個時段」的訊號，跟「建立者對自己開的時段當然有空」這個不需要驗證的公理，被錯誤地加總在同一個數字裡。而前端從來沒有讓建立者真的選「哪些候選時段對自己方便」（`EventPage.vue` 無條件送出全部候選時段索引：`creatorSlotIndexes: configuredSlots.value.map((_, i) => i)`），這個欄位從頭到尾不反映任何真實使用者意圖，純粹是灌票的副作用。
+
+情境二（range 模式）有同樣的設計，只是實作更明確（`getActivity`/`confirmFormation` 兩處手動塞一段涵蓋整個基準範圍的虛擬 range 代表建立者，程式碼註解直接寫「建立者永遠算『有空』」）——不是情境四獨有的實作疏漏，是三個情境（B/C/D）共用的同一個設計決定，這次一併修正。
+
+**修正範圍刻意排除「出席人數統計」**：活動卡片的「已報名 X/∞ 人」、頭像列表、`current_count`，回答的是「總共有幾個真人會出席」，建立者當然會出席自己辦的活動，這個數字應該繼續把建立者算進去，維持不變。這次只調整「決策票數/交集運算的分母跟計數」——回答的是「這個候選時段有多少人主動選了它、大家共識夠不夠」，這個語意下建立者的可用性是背景假設，不是主動投票訊號，不該算進去。兩者在程式碼裡目前共用同一個 `activity.participants.length`（`joinedCount`），這次會拆成兩個獨立的用途。
+
+### What Changes
+
+- 移除 `createActivity` 的 `creatorSlotIndexes`/`creatorAvailability` 機制（情境三／四）：拿掉必填驗證與 `ActivityAvailability` 的 insert。這個 insert 一拿掉，情境三的票數（`decision_candidates`/`getLeaderSlots`）跟情境四的子區間交集運算（`computeSlotOverlapRanking`）都是從同一份 `slot.availabilities` 算出來的，不用另外改交集運算程式碼，會自動只反映真人參與者
+- 新增 `votingParticipantCount`（= 參與者數扣掉建立者），取代情境三／四「是否全員一致」判斷（`decideFormationOutcome`/`is_unanimous`）目前使用的 `joinedCount`——建立者不投票，繼續用包含建立者的 `joinedCount` 當分母，會讓真正全員一致的情況也永遠判定成不一致。`joinedCount`/`current_count`/頭像列表在人數達標判定、出席統計等其他地方**維持不變**，仍把建立者算進去，跟 `votingParticipantCount` 是兩個不同用途、不能共用
+- 情境二移除建立者的虛擬全窗口 range 注入，`computeRangeRanking` 的 `totalParticipants` 改用真正送出可用時間的人數（依 `user_id` 去重後的真人參與者數），`getActivity`／`confirmFormation` 兩處呼叫都要同步調整
+
+### Impact
+
+- `src/controllers/activityController.js`：`createActivity`（移除 creatorSlotIndexes 機制）、`getActivity`／`confirmFormation`（情境二真人參與者計數、情境三/四 `votingParticipantCount`）——`joinedCount`/`current_count`/`participants` 陣列本身不變
+- `src/__tests__/activityStateMachine.test.js`：移除/改寫斷言 `creatorAvailability`/`creatorSlotIndexes` 行為的既有測試
+- `API_DOCS.md`：若請求/回應格式因移除 `creatorSlotIndexes` 而變動，同步更新

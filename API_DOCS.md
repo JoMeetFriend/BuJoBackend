@@ -546,7 +546,7 @@ const res = await fetch("http://localhost:3000/api/users/me/avatar", {
 | `timeWindowStart` | string | 選填 | 允許回報的時間範圍起點；不設 = 當天全天皆可         |
 | `timeWindowEnd`   | string | 選填 | 允許回報的時間範圍終點；不設 = 當天全天皆可         |
 
-> 不再需要 `slots`（候選時段列表）與 `creatorSlotIndexes`（建立者候選時段索引）——建立活動時不會產生任何 `ActivityCandidateSlot`，建立者在重疊排序中永遠視為有空。
+> 不需要 `slots`（候選時段列表）——建立活動時不會產生任何 `ActivityCandidateSlot`。`creatorSlotIndexes` 欄位已整個移除（情境三／四也一樣），建立者不會在任何情境的重疊排序/票數計算中被算進去——建立者對自己建立的候選時段有空是結構性保證的事實，不需要額外資料佐證，也不該算進「這個時段有多少人支持」的計票裡。
 
 **Response**：同其他情境，`201` 回傳 `{ "activity": { "id": "uuid" } }`。
 
@@ -617,8 +617,8 @@ const res = await fetch("http://localhost:3000/api/users/me/avatar", {
 ```
 
 - **BREAKING**：情境三／四的 `decision_candidates` 不再只回傳並列最高票的候選時段，改成回傳**所有**候選時段，依支持度由高到低排序——前端要能顯示完整清單，不能假設只有一筆或只有並列最高票那幾筆
-- 情境三每筆新增 `is_unanimous`（`count` 等於目前已報名人數且大於 0）
-- 情境四每筆新增 `perfect_overlap`／`partial_overlap`：對這個候選時段自己的 `slot_start`～`slot_end` 範圍，把投給它的參與者子區間（沒填子區間視為整個候選時段都覆蓋）做跟情境二一樣的切格交集運算；`count` 是投給這個候選時段的總人數（不是交集運算的重疊人數）
+- 情境三每筆新增 `is_unanimous`（`count` 等於真人參與者人數且大於 0——分母**不含建立者**，建立者對自己建立的候選時段有空是結構性保證的事實，不算主動投票）
+- 情境四每筆新增 `perfect_overlap`／`partial_overlap`：對這個候選時段自己的 `slot_start`～`slot_end` 範圍，把投給它的真人參與者子區間（沒填子區間視為整個候選時段都覆蓋）做跟情境二一樣的切格交集運算；`count` 是投給這個候選時段的真人參與者總人數（不是交集運算的重疊人數，也不含建立者）
 - `perfect_overlap`／`partial_overlap` 裡的 `id` 一樣是 `temp-` 前綴、非真實 `ActivityCandidateSlot.id`
 
 ### POST `/api/activities/:id/confirm-formation` — 建立者確認成團 🔒

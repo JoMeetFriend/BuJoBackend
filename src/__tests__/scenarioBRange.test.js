@@ -279,7 +279,7 @@ describe('getActivity - range 模式 decision_candidates', () => {
     prisma.activity.updateMany.mockResolvedValue({ count: 1 })
   })
 
-  it('回傳 decision_candidates 為 {perfect_overlap, partial_overlap}，建立者視為永遠有空', async () => {
+  it('回傳 decision_candidates 為 {perfect_overlap, partial_overlap}，只反映真人參與者送出的可用時間，不含建立者的幽靈投票', async () => {
     const activity = makeRangeActivity({
       status: 'voting',
       participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)],
@@ -306,6 +306,7 @@ describe('getActivity - range 模式 decision_candidates', () => {
 
     await getActivity(makeReq(), res)
 
+    // 只有 1 個真人參與者送出可用時間，count 應該是 1，不是「+ 建立者虛擬整段有空」灌出來的 2
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
         activity: expect.objectContaining({
@@ -315,12 +316,69 @@ describe('getActivity - range 模式 decision_candidates', () => {
               expect.objectContaining({
                 slot_start: new Date(2026, 7, 1, 18, 0),
                 slot_end: new Date(2026, 7, 1, 19, 0),
-                count: 2,
+                count: 1,
               }),
               expect.objectContaining({
                 slot_start: new Date(2026, 7, 1, 19, 0),
                 slot_end: new Date(2026, 7, 1, 20, 0),
-                count: 2,
+                count: 1,
+              }),
+            ],
+            partial_overlap: [],
+          },
+        }),
+      }),
+    )
+  })
+
+  it('兩個真人參與者都送出可用時間時，totalParticipants 依 user_id 去重，不因為某人用「+新增時段」送多筆而膨脹', async () => {
+    const activity = makeRangeActivity({
+      status: 'voting',
+      participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)],
+      availabilityRanges: [
+        // PARTICIPANT_ID 用「+新增時段」送出兩筆不連續的 range，仍然只算 1 個人
+        {
+          user_id: PARTICIPANT_ID,
+          range_start: new Date(2026, 7, 1, 18, 0),
+          range_end: new Date(2026, 7, 1, 19, 0),
+        },
+        {
+          user_id: PARTICIPANT_ID,
+          range_start: new Date(2026, 7, 1, 19, 0),
+          range_end: new Date(2026, 7, 1, 20, 0),
+        },
+      ],
+      schedule: {
+        requires_voting: true,
+        availability_mode: 'range',
+        deadline_at: new Date('2020-01-01T00:00:00Z'),
+        fixed_date: new Date(2026, 7, 1),
+        time_window_start: new Date(2026, 7, 1, 18, 0),
+        time_window_end: new Date(2026, 7, 1, 20, 0),
+        vote_deadline_at: new Date('2099-01-01T00:00:00Z'),
+        confirmedSlot: null,
+      },
+    })
+    prisma.activity.findUnique.mockResolvedValue(activity)
+    const res = makeRes()
+
+    await getActivity(makeReq(), res)
+
+    // 兩筆 range 都來自同一個 user_id，totalParticipants 去重後是 1，每一格仍然是 count 1 = 完全重疊
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activity: expect.objectContaining({
+          decision_candidates: {
+            perfect_overlap: [
+              expect.objectContaining({
+                slot_start: new Date(2026, 7, 1, 18, 0),
+                slot_end: new Date(2026, 7, 1, 19, 0),
+                count: 1,
+              }),
+              expect.objectContaining({
+                slot_start: new Date(2026, 7, 1, 19, 0),
+                slot_end: new Date(2026, 7, 1, 20, 0),
+                count: 1,
               }),
             ],
             partial_overlap: [],
@@ -453,14 +511,14 @@ describe('getActivity - range 模式 decision_candidates', () => {
 
     await getActivity(makeReq(), res)
 
+    // 建立者不算真人投票，除了那筆殘留的取消報名者資料外沒有任何真人送出可用時間，
+    // decision_candidates 應該整個是空的——不會顯示建立者虛擬投票出來的整段時間，
+    // 也不會把已取消報名者的殘留資料算進去
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
         activity: expect.objectContaining({
           decision_candidates: {
-            perfect_overlap: [
-              expect.objectContaining({ slot_start: new Date(2026, 7, 1, 18, 0), count: 1 }),
-              expect.objectContaining({ slot_start: new Date(2026, 7, 1, 19, 0), count: 1 }),
-            ],
+            perfect_overlap: [],
             partial_overlap: [],
           },
         }),

@@ -49,4 +49,20 @@
 
 - [x] 8.1 更新 `API_DOCS.md`，補上 `decision_candidates` 新格式、`confirmFormation` 新驗證規則、情境四交集運算相關的回應說明
 - [x] 8.2 跑完整後端測試套件，確認情境一/二/三既有測試沒有因為自動成團判定調整而壞掉
-- [ ] 8.3 手動驗證：情境三/四各建一個多候選時段的活動，走過報名→查看排名清單→確認非最高票成團的完整流程
+- [x] 8.3 手動驗證：情境三/四各建一個多候選時段的活動，走過報名→查看排名清單→確認非最高票成團的完整流程
+
+## 9. 移除建立者的幽靈投票（情境四手動驗證時發現，見 proposal.md/design.md 的 Addendum）
+
+- [x] 9.1 移除 `createActivity` 的 `creatorSlotIndexes` 必填驗證（83-87 行）與 `creatorAvailability`/`ActivityAvailability.createMany` 的 insert（128-141 行）（design: 移除 creatorSlotIndexes/creatorAvailability 機制，不是「排除建立者的計票」）
+- [x] 9.2 測試：情境三／四建立活動時不再要求 `creatorSlotIndexes`，缺少這個欄位也能成功建立（`createActivity` no longer requires or writes a creator availability row）
+- [x] 9.3 測試：情境四只有 1 個真人參與者對某候選時段提交子區間時，`computeSlotOverlapRanking` 算出的 `perfect_overlap`/`partial_overlap` 票數等於 1，不是 2（Solo real participant's sub-range is not inflated by a phantom creator vote）
+- [x] 9.4 測試：情境三只有 1 個真人參與者投給某候選時段時，`decision_candidates` 該筆的 `count` 等於 1，不是 2（Solo real participant's vote is not inflated by a phantom creator vote）
+- [x] 9.5 新增 `getVotingParticipantCount(activity)`，回傳 `activity.participants` 排除 `creator_id` 後的人數，取代情境三／四 `decideFormationOutcome`/`is_unanimous` 目前使用的 `joinedCount`；`joinedCount`/`current_count`/`participants` 陣列（出席人數統計、`participant_target` 判定、頭像列表）維持不變，不套用這個新函式（design: 新增 votingParticipantCount，跟 joinedCount 分開用途）
+- [x] 9.6 測試：情境三／四所有真人參與者都投給同一候選時段時，`is_unanimous`/`decideFormationOutcome` 正確判定全員一致，不會因為分母誤含建立者而永遠判定不一致（All real participants agreeing is correctly detected as unanimous）
+- [x] 9.7 測試：`getActivity` 回傳的 `current_count`、`participants` 陣列、`已報名` 對應欄位不受這次調整影響，建立者仍計入出席人數（Attendance headcount still includes the creator）
+- [x] 9.8 情境二（range 模式）：`getActivity`/`confirmFormation` 兩處呼叫移除 `allRanges = [...submittedRanges, {start: windowStart, end: windowEnd}]` 的虛擬建立者 range 注入，`computeRangeRanking` 的 `totalParticipants` 改用真人送出者依 `user_id` 去重後的人數（design: 情境二比照處理：移除虛擬 range 注入，totalParticipants 改用真人送出者去重數）
+- [x] 9.9 測試：情境二只有建立者、沒有任何人報名時，`decision_candidates.perfect_overlap`/`partial_overlap` 都是空陣列，不會顯示建立者虛擬投票出來的整段時間（No real submissions yields an empty overlap ranking）
+- [x] 9.10 測試：情境二同一個真人參與者用「+新增時段」送出兩筆不連續 range 時，`totalParticipants` 正確算成 1 人（去重），不是 2（A single participant's multiple ranges count as one voter）
+- [x] 9.11 更新 `src/__tests__/activityStateMachine.test.js` 裡斷言 `creatorAvailability`/`creatorSlotIndexes` 行為的既有測試（397/433/475/506/534/633/645 行附近），移除或改寫成驗證新行為
+- [x] 9.12 跑 `npx jest` 全套後端測試，確認情境一/二/三/四既有測試沒有因為這次調整而回歸
+- [x] 9.13 更新 `API_DOCS.md`，移除 `creatorSlotIndexes` 請求欄位的說明（若有記載）

@@ -12,7 +12,6 @@ export async function createActivity(req, res) {
     singleDate, timeWindowStart, timeWindowEnd,
     candidateDates, uniformTime,
     dateSlots,
-    creatorSlotIndexes,
   } = req.body
   const creatorId = req.user.userId
   const isVotingC = Array.isArray(candidateDates) && candidateDates.length > 0
@@ -80,15 +79,6 @@ export async function createActivity(req, res) {
     candidateSlotsData = [{ slot_start: slotStart, slot_end: slotEnd, all_day: !!allDay }]
   }
 
-  if (isVotingC || isVotingD) {
-    if (!Array.isArray(creatorSlotIndexes) || creatorSlotIndexes.length === 0) {
-      return res.status(400).json({ message: '請選擇建立者自己方便的候選時段' })
-    }
-    if (!creatorSlotIndexes.every((i) => Number.isInteger(i) && i >= 0 && i < candidateSlotsData.length)) {
-      return res.status(400).json({ message: '候選時段索引無效' })
-    }
-  }
-
   const deadlineAt = new Date(deadline)
 
   try {
@@ -120,26 +110,6 @@ export async function createActivity(req, res) {
       },
       include: { candidateSlots: true },
     })
-
-    if (isVotingC || isVotingD) {
-      // 用 slot_start/slot_end 的值把剛建立的候選時段對應回原本陣列的索引（不依賴回傳順序）；
-      // 同一組時段可能重複（相同 start/end），用 queue 存 id 逐一取用，避免互相覆蓋、共用同一個 id
-      const idsByTiming = new Map()
-      for (const s of activity.candidateSlots) {
-        const key = `${s.slot_start.getTime()}_${s.slot_end.getTime()}`
-        if (!idsByTiming.has(key)) idsByTiming.set(key, [])
-        idsByTiming.get(key).push(s.id)
-      }
-      const creatorAvailability = creatorSlotIndexes.map((i) => {
-        const { slot_start, slot_end } = candidateSlotsData[i]
-        const key = `${slot_start.getTime()}_${slot_end.getTime()}`
-        return {
-          candidate_slot_id: idsByTiming.get(key).shift(),
-          user_id: creatorId,
-        }
-      })
-      await prisma.activityAvailability.createMany({ data: creatorAvailability, skipDuplicates: true })
-    }
 
     await notifyFriendsActivityCreated({
       creatorId,
@@ -272,7 +242,11 @@ export async function getActivity(req, res) {
         nextStatus = 'cancelled'
       } else {
         const availabilities = activity.candidateSlots.flatMap((s) => s.availabilities)
-        const outcome = decideFormationOutcome(activity.candidateSlots, availabilities, joinedCount)
+        const outcome = decideFormationOutcome(
+          activity.candidateSlots,
+          availabilities,
+          getVotingParticipantCount(activity),
+        )
         nextStatus = outcome.status
         winningSlot = outcome.winningSlot
       }
@@ -370,9 +344,12 @@ export async function getActivity(req, res) {
         const windowStart = sched.time_window_start ?? sched.fixed_date
         const windowEnd = sched.time_window_end ?? new Date(sched.fixed_date.getTime() + 24 * 60 * 60 * 1000)
         const submittedRanges = getJoinedAvailabilityRanges(activity)
-        // 建立者永遠算「有空」，用一段涵蓋整個基準範圍的虛擬 range 表示，不需要真實資料列
-        const allRanges = [...submittedRanges, { start: windowStart, end: windowEnd }]
-        decisionCandidates = computeRangeRanking(allRanges, windowStart, windowEnd, joinedCount)
+        decisionCandidates = computeRangeRanking(
+          submittedRanges,
+          windowStart,
+          windowEnd,
+          getJoinedSubmitterCount(activity),
+        )
       } else if (scheduleVariant === 'find_date_time') {
         // 情境四：每個候選時段各自跑一次交集運算，讓建立者看到窗口內實際重疊的窄時段，不只是票數
         decisionCandidates = activity.candidateSlots
@@ -391,6 +368,7 @@ export async function getActivity(req, res) {
       } else {
         // 情境三：回傳所有候選時段的完整支持度排名，不再只回傳並列最高票
         const availabilities = activity.candidateSlots.flatMap((s) => s.availabilities)
+        const votingParticipantCount = getVotingParticipantCount(activity)
         decisionCandidates = activity.candidateSlots
           .map((s) => {
             const count = availabilities.filter((a) => a.candidate_slot_id === s.id).length
@@ -399,7 +377,7 @@ export async function getActivity(req, res) {
               slot_start: s.slot_start,
               slot_end: s.slot_end,
               count,
-              is_unanimous: count > 0 && count === joinedCount,
+              is_unanimous: count > 0 && count === votingParticipantCount,
             }
           })
           .sort((a, b) => b.count - a.count)
@@ -670,12 +648,15 @@ export async function confirmFormation(req, res) {
       if (!slotStart || !slotEnd) return res.status(400).json({ message: '請選擇要確認的時段' })
 
       const sched = activity.schedule
-      const joinedCount = activity.participants.length
       const windowStart = sched.time_window_start ?? sched.fixed_date
       const windowEnd = sched.time_window_end ?? new Date(sched.fixed_date.getTime() + 24 * 60 * 60 * 1000)
       const submittedRanges = getJoinedAvailabilityRanges(activity)
-      const allRanges = [...submittedRanges, { start: windowStart, end: windowEnd }]
-      const ranking = computeRangeRanking(allRanges, windowStart, windowEnd, joinedCount)
+      const ranking = computeRangeRanking(
+        submittedRanges,
+        windowStart,
+        windowEnd,
+        getJoinedSubmitterCount(activity),
+      )
       const candidates = [...ranking.perfect_overlap, ...ranking.partial_overlap]
 
       const start = new Date(slotStart)
@@ -894,6 +875,23 @@ function getJoinedAvailabilityRanges(activity) {
   return (activity.availabilityRanges ?? [])
     .filter((r) => joinedUserIds.has(r.user_id))
     .map((r) => ({ start: r.range_start, end: r.range_end }))
+}
+
+// 情境二真正送出可用時間的人數（依 user_id 去重）——一個人可以用「+新增時段」送出多筆不連續
+// range，筆數不等於人數，必須去重才能當「是否全員一致」的分母
+function getJoinedSubmitterCount(activity) {
+  const joinedUserIds = new Set(activity.participants.map((p) => p.user_id))
+  return new Set(
+    (activity.availabilityRanges ?? [])
+      .filter((r) => joinedUserIds.has(r.user_id))
+      .map((r) => r.user_id),
+  ).size
+}
+
+// 情境三／四「是否全員一致」的分母——排除建立者。建立者對自己建立的候選時段有空是結構性保證的
+// 事實，不是主動投票訊號，不該算進「這個時段有沒有得到所有人同意」的分母
+function getVotingParticipantCount(activity) {
+  return activity.participants.filter((p) => p.user_id !== activity.creator_id).length
 }
 
 function isUniformMultiDateSlotVoting(candidateSlots) {

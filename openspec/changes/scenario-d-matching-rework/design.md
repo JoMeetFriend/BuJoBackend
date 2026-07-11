@@ -61,7 +61,53 @@
 - **[Risk]** 移除 A／C 自動成團，改變既有 API 行為（原本人數達標會直接回應 `confirmed`，現在不會）→ **Mitigation**：前端會同步更新，這個專案目前還在開發階段，不需要做向下相容層
 - **[Risk]** 建立者可以確認票數為 0 的候選時段 → **Mitigation**：刻意允許，這是建立者的自主判斷（例如私下已經口頭喬好，只是懶得在系統裡投票），系統不強制最低票數門檻
 - **[Risk]** 情境四交集運算的效能，候選時段數量多時要跑多次切格計算 → **Mitigation**：每個候選時段的時間範圍通常只有幾小時，切格運算量小，且只在 `getActivity`／`confirmFormation` 被呼叫時才算，不是常駐計算
+- **[Risk]** 移除 `creatorSlotIndexes` 是 BREAKING API 變更（請求 body 不再需要/使用這個欄位）→ **Mitigation**：專案還在開發分支，前端會同步移除這個欄位的送出，不需要相容層
+- **[Risk]** 既有測試（`activityStateMachine.test.js` 397/433/475/506/534/633/645 行附近）斷言 `creatorAvailability`/`creatorSlotIndexes` 的行為，這次會直接壞掉 → **Mitigation**：這些測試本來就是在保護即將被移除的錯誤行為，直接移除或改寫成驗證新行為，不是回歸
 
 ## Migration Plan
 
 不需要 Prisma migration（沒有新增欄位）。純 controller 邏輯調整，跟情境四前端變更（同名前端 change）需要同時部署，因為 API 回應格式（`decision_candidates`）跟成團行為都有 BREAKING 變更。
+
+## Addendum：移除建立者的幽靈投票
+
+見 proposal.md 同名 Addendum 段落的 Why，這裡只記錄技術決策。
+
+### 移除 creatorSlotIndexes/creatorAvailability 機制，不是「排除建立者的計票」
+
+一開始考慮的修法是「保留建立者的 `ActivityAvailability` 記錄，但在 `computeSlotOverlapRanking`/`getLeaderSlots` 這些計票函式裡過濾掉建立者的 `user_id`」。否決這個做法，改成直接移除 `createActivity` 裡寫入這筆記錄的機制（83-87 行的必填驗證、133-141 行的 insert）。理由：
+
+- 這筆記錄從頭到尾不承載任何真實資訊——`creatorSlotIndexes` 在前端無條件等於全部候選時段索引，不反映使用者的任何選擇，資料本身是死的
+- 「建立者對自己建立的候選時段有空」這個事實已經被 `slot_start`~`slot_end` 邊界本身結構性保證，不需要額外一筆資料佐證
+- 直接不寫入這筆記錄，情境三的 `decision_candidates`/`getLeaderSlots`、情境四的 `computeSlotOverlapRanking` 全部從同一份 `slot.availabilities` 讀資料，不需要另外在每個計票函式裡加建立者過濾邏輯——移除寫入點比在多個讀取點各自過濾更不容易漏改
+
+### 新增 votingParticipantCount，跟 joinedCount 分開用途
+
+`joinedCount`（`activity.participants.length`，包含建立者）目前身兼兩種用途：（a）出席人數統計、`participant_target` 達標判定；（b）情境三／四「是否全員一致」（`decideFormationOutcome`/`is_unanimous`）的分母。這次拆開，新增：
+
+```js
+function getVotingParticipantCount(activity) {
+  return activity.participants.filter((p) => p.user_id !== activity.creator_id).length
+}
+```
+
+只用在 `decideFormationOutcome` 呼叫（getActivity 決策清單、joinActivity 人數達標判定）跟 `is_unanimous` 計算這兩處，取代原本傳入的 `joinedCount`。`joinedCount` 本身、`current_count`、頭像列表回傳邏輯完全不動。
+
+### 情境二比照處理：移除虛擬 range 注入，totalParticipants 改用真人送出者去重數
+
+```js
+// 修改前
+const submittedRanges = getJoinedAvailabilityRanges(activity)
+const allRanges = [...submittedRanges, { start: windowStart, end: windowEnd }]
+decisionCandidates = computeRangeRanking(allRanges, windowStart, windowEnd, joinedCount)
+
+// 修改後
+const submittedRanges = getJoinedAvailabilityRanges(activity)
+const votingCount = new Set(
+  (activity.availabilityRanges ?? [])
+    .filter((r) => joinedUserIds.has(r.user_id))
+    .map((r) => r.user_id),
+).size
+decisionCandidates = computeRangeRanking(submittedRanges, windowStart, windowEnd, votingCount)
+```
+
+用 `user_id` 去重是因為情境二一個人可以用「+新增時段」送出多筆不連續的 range，`submittedRanges.length`（筆數）不等於真人數，必須去重才能當分母。`getJoinedAvailabilityRanges` 回傳時已經把 `user_id` 拿掉了，這裡另外算一次去重數量，或是把 `getJoinedAvailabilityRanges` 改成順便回傳 distinct 人數（兩處呼叫點都要用到，抽成共用小函式）。
