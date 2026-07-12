@@ -6,6 +6,9 @@ jest.unstable_mockModule('../lib/prisma.js', () => ({
       create: jest.fn(),
       createMany: jest.fn(),
       count: jest.fn(),
+      findMany: jest.fn(),
+      findFirst: jest.fn(),
+      updateMany: jest.fn(),
     },
     friendship: {
       findMany: jest.fn(),
@@ -34,6 +37,8 @@ const {
   createActivityCreatedNotification,
   notifyFriendsActivityCreated,
   countUnreadNotifications,
+  listUserNotifications,
+  dismissNotification,
 } = await import('../services/notificationService.js')
 const { default: prisma } = await import('../lib/prisma.js')
 const { sendLinePushMessage } = await import('../services/lineMessagingService.js')
@@ -395,5 +400,147 @@ describe('notificationService', () => {
   // 測試 countUnreadNotifications 缺少 userId 時會丟錯。
   it('countUnreadNotifications 缺 userId 會丟錯', async () => {
     await expect(countUnreadNotifications({})).rejects.toThrow('userId is required')
+  })
+
+  describe('notification dismissal', () => {
+    it('listUserNotifications 只查詢未 dismissal 通知且保留一般已讀通知', async () => {
+      const createdAt = new Date('2026-07-12T00:00:00.000Z')
+      prisma.notification.findMany.mockResolvedValue([
+        {
+          id: 'notification-read',
+          user_id: 'user-b',
+          type: 'custom_type',
+          reference_id: null,
+          reference_type: null,
+          is_read: true,
+          created_at: createdAt,
+          dismissed_at: null,
+        },
+      ])
+
+      const result = await listUserNotifications({ userId: 'user-b' })
+
+      expect(prisma.notification.findMany).toHaveBeenCalledWith({
+        where: {
+          user_id: 'user-b',
+          dismissed_at: null,
+        },
+        orderBy: { created_at: 'desc' },
+      })
+      expect(result).toEqual([
+        expect.objectContaining({
+          id: 'notification-read',
+          isRead: true,
+          createdAt: createdAt.toISOString(),
+        }),
+      ])
+    })
+
+    it('dismissNotification 同一次更新已讀與 dismissal 時間', async () => {
+      prisma.notification.findFirst.mockResolvedValue({
+        id: 'notification-1',
+        type: 'activity_created',
+        reference_id: 'activity-1',
+        reference_type: 'activity',
+      })
+      prisma.notification.updateMany.mockResolvedValue({ count: 1 })
+
+      const result = await dismissNotification({
+        userId: 'user-b',
+        notificationId: 'notification-1',
+      })
+
+      expect(result).toBe('dismissed')
+      expect(prisma.notification.updateMany).toHaveBeenCalledWith({
+        where: {
+          id: 'notification-1',
+          user_id: 'user-b',
+          dismissed_at: null,
+        },
+        data: {
+          is_read: true,
+          dismissed_at: expect.any(Date),
+        },
+      })
+    })
+
+    it('不存在、他人或已 dismissal 的通知統一回傳 not_found', async () => {
+      prisma.notification.findFirst.mockResolvedValue(null)
+
+      await expect(dismissNotification({
+        userId: 'user-b',
+        notificationId: 'notification-1',
+      })).resolves.toBe('not_found')
+
+      expect(prisma.notification.findFirst).toHaveBeenCalledWith({
+        where: {
+          id: 'notification-1',
+          user_id: 'user-b',
+          dismissed_at: null,
+        },
+        select: {
+          id: true,
+          type: true,
+          reference_id: true,
+          reference_type: true,
+        },
+      })
+      expect(prisma.notification.updateMany).not.toHaveBeenCalled()
+    })
+
+    it('條件更新遇到重複 dismissal 競態時回傳 not_found', async () => {
+      prisma.notification.findFirst.mockResolvedValue({
+        id: 'notification-1',
+        type: 'activity_created',
+        reference_id: 'activity-1',
+        reference_type: 'activity',
+      })
+      prisma.notification.updateMany.mockResolvedValue({ count: 0 })
+
+      await expect(dismissNotification({
+        userId: 'user-b',
+        notificationId: 'notification-1',
+      })).resolves.toBe('not_found')
+    })
+
+    it('pending 好友邀請不可 dismissal 且不更新通知', async () => {
+      prisma.notification.findFirst.mockResolvedValue({
+        id: 'notification-1',
+        type: 'friend_request_created',
+        reference_id: 'friendship-1',
+        reference_type: 'friendship',
+      })
+      prisma.friendship.findUnique.mockResolvedValue({ status: 'pending' })
+
+      await expect(dismissNotification({
+        userId: 'user-b',
+        notificationId: 'notification-1',
+      })).resolves.toBe('pending_friend_request')
+
+      expect(prisma.friendship.findUnique).toHaveBeenCalledWith({
+        where: { id: 'friendship-1' },
+        select: { status: true },
+      })
+      expect(prisma.notification.updateMany).not.toHaveBeenCalled()
+    })
+
+    it.each(['accepted', 'rejected'])(
+      '%s 好友邀請處理完成後可以 dismissal',
+      async (status) => {
+        prisma.notification.findFirst.mockResolvedValue({
+          id: 'notification-1',
+          type: 'friend_request_created',
+          reference_id: 'friendship-1',
+          reference_type: 'friendship',
+        })
+        prisma.friendship.findUnique.mockResolvedValue({ status })
+        prisma.notification.updateMany.mockResolvedValue({ count: 1 })
+
+        await expect(dismissNotification({
+          userId: 'user-b',
+          notificationId: 'notification-1',
+        })).resolves.toBe('dismissed')
+      },
+    )
   })
 })

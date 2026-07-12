@@ -255,13 +255,77 @@ export async function listUserNotifications({ userId }, db = prisma) {
   }
 
   const notifications = await db.notification.findMany({
-    where: { user_id: userId },
+    where: {
+      user_id: userId,
+      dismissed_at: null,
+    },
     orderBy: { created_at: "desc" },
   });
 
   return Promise.all(
     notifications.map((notification) => formatNotification(notification, db)),
   );
+}
+
+export async function dismissNotification(
+  { userId, notificationId },
+  db = prisma,
+) {
+  if (!userId) {
+    throw new Error("userId is required");
+  }
+
+  if (!notificationId) {
+    throw new Error("notificationId is required");
+  }
+
+  const notification = await db.notification.findFirst({
+    where: {
+      id: notificationId,
+      user_id: userId,
+      dismissed_at: null,
+    },
+    select: {
+      id: true,
+      type: true,
+      reference_id: true,
+      reference_type: true,
+    },
+  });
+
+  if (!notification) {
+    return "not_found";
+  }
+
+  const isFriendRequest =
+    notification.type === NOTIFICATION_TYPES.FRIEND_REQUEST_CREATED &&
+    notification.reference_type === NOTIFICATION_REFERENCE_TYPES.FRIENDSHIP &&
+    notification.reference_id;
+
+  if (isFriendRequest) {
+    const friendship = await db.friendship.findUnique({
+      where: { id: notification.reference_id },
+      select: { status: true },
+    });
+
+    if (friendship?.status === "pending") {
+      return "pending_friend_request";
+    }
+  }
+
+  const result = await db.notification.updateMany({
+    where: {
+      id: notificationId,
+      user_id: userId,
+      dismissed_at: null,
+    },
+    data: {
+      is_read: true,
+      dismissed_at: new Date(),
+    },
+  });
+
+  return result.count === 0 ? "not_found" : "dismissed";
 }
 
 export async function markNotificationAsRead(

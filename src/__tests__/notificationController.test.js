@@ -4,6 +4,7 @@ jest.unstable_mockModule("../lib/prisma.js", () => ({
   default: {
     notification: {
       findMany: jest.fn(),
+      findFirst: jest.fn(),
       updateMany: jest.fn(),
       count: jest.fn(),
     },
@@ -17,6 +18,7 @@ jest.unstable_mockModule("../lib/prisma.js", () => ({
 }));
 
 const {
+  dismissNotification,
   listNotifications,
   markAllRead,
   markRead,
@@ -72,6 +74,16 @@ describe("/api/notifications routes", () => {
     expect(unreadCountRoute.route.methods.get).toBe(true);
     expect(unreadCountRoute.route.stack[0].handle.name).toBe("authenticate");
   });
+
+  it("使用 authenticate middleware 保護 dismissal API", () => {
+    const dismissRoute = notificationRoutes.stack.find(
+      (layer) => layer.route?.path === "/:id/dismiss",
+    );
+
+    expect(dismissRoute).toBeDefined();
+    expect(dismissRoute.route.methods.patch).toBe(true);
+    expect(dismissRoute.route.stack[0].handle.name).toBe("authenticate");
+  });
 });
 
 describe("listNotifications", () => {
@@ -101,7 +113,10 @@ describe("listNotifications", () => {
     await listNotifications(makeReq({ userId: "user-b" }), res);
 
     expect(prisma.notification.findMany).toHaveBeenCalledWith({
-      where: { user_id: "user-b" },
+      where: {
+        user_id: "user-b",
+        dismissed_at: null,
+      },
       orderBy: { created_at: "desc" },
     });
     expect(res.json).toHaveBeenCalledWith({
@@ -379,6 +394,73 @@ describe("getUnreadCount", () => {
     const afterRes = makeRes();
     await getUnreadCount(makeReq({ userId: "user-b" }), afterRes);
     expect(afterRes.json).toHaveBeenCalledWith({ unreadCount: 0 });
+  });
+});
+
+describe("dismissNotification", () => {
+  it("成功 dismissal 回傳 200", async () => {
+    prisma.notification.findFirst.mockResolvedValue({
+      id: "notification-1",
+      type: "activity_created",
+      reference_id: "activity-1",
+      reference_type: "activity",
+    });
+    prisma.notification.updateMany.mockResolvedValue({ count: 1 });
+    const res = makeRes();
+
+    await dismissNotification(
+      makeReq({ userId: "user-b", params: { id: "notification-1" } }),
+      res,
+    );
+
+    expect(res.json).toHaveBeenCalledWith({ message: "已移除通知" });
+  });
+
+  it("找不到 owned visible notification 時回傳 404", async () => {
+    prisma.notification.findFirst.mockResolvedValue(null);
+    const res = makeRes();
+
+    await dismissNotification(
+      makeReq({ userId: "user-b", params: { id: "notification-1" } }),
+      res,
+    );
+
+    expect(res.status).toHaveBeenCalledWith(404);
+    expect(res.json).toHaveBeenCalledWith({ message: "找不到通知" });
+  });
+
+  it("pending 好友邀請 dismissal 回傳 409", async () => {
+    prisma.notification.findFirst.mockResolvedValue({
+      id: "notification-1",
+      type: "friend_request_created",
+      reference_id: "friendship-1",
+      reference_type: "friendship",
+    });
+    prisma.friendship.findUnique.mockResolvedValue({ status: "pending" });
+    const res = makeRes();
+
+    await dismissNotification(
+      makeReq({ userId: "user-b", params: { id: "notification-1" } }),
+      res,
+    );
+
+    expect(res.status).toHaveBeenCalledWith(409);
+    expect(res.json).toHaveBeenCalledWith({
+      message: "待處理的好友邀請無法移除",
+    });
+  });
+
+  it("dismissal 發生資料庫例外時回傳 500", async () => {
+    prisma.notification.findFirst.mockRejectedValue(new Error("db down"));
+    const res = makeRes();
+
+    await dismissNotification(
+      makeReq({ userId: "user-b", params: { id: "notification-1" } }),
+      res,
+    );
+
+    expect(res.status).toHaveBeenCalledWith(500);
+    expect(res.json).toHaveBeenCalledWith({ message: "伺服器錯誤" });
   });
 });
 

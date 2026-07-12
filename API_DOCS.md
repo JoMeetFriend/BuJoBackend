@@ -421,7 +421,7 @@ const res = await fetch("http://localhost:3000/api/users/me/avatar", {
 
 ### GET `/api/notifications` — 取得通知列表 🔒
 
-> 需要登入（cookie 中有效的 `token`）。後端會組好通知文字、分類與可操作 action，前端可直接渲染。
+> 需要登入（cookie 中有效的 `token`）。後端會組好通知文字、分類與可操作 action，前端可直接渲染。列表會排除 `dismissed_at` 已有值的通知；一般已讀但尚未 dismissal 的通知仍會回傳，response shape 不變。
 
 **Response**
 
@@ -505,6 +505,36 @@ const res = await fetch("http://localhost:3000/api/users/me/avatar", {
 
 // 404
 { "message": "找不到通知" }
+```
+
+### PATCH `/api/notifications/:id/dismiss` — 永久隱藏通知 🔒
+
+> 需要登入（cookie 中有效的 `token`）。只能操作自己的尚未隱藏通知。成功時會在同一次更新將通知設為已讀並寫入 `dismissed_at`；資料列仍保留於資料庫供稽核，但不再出現在正常通知列表，也不提供復原入口。
+>
+> `friend_request_created` 對應的 friendship 仍為 `pending` 時不可 dismissal；必須先接受或拒絕，待 friendship 狀態改為 `accepted` 或 `rejected` 後才能移除通知。
+
+**Response**
+
+| 狀態碼 | 說明                                  |
+| ------ | ------------------------------------- |
+| `200`  | 已將通知標記已讀並永久隱藏            |
+| `401`  | 未登入 / token 無效或已過期           |
+| `404`  | 通知不存在、不屬於使用者或已經 dismissal |
+| `409`  | 待處理的好友邀請尚不可移除            |
+| `500`  | 伺服器或資料庫錯誤                    |
+
+```json
+// 200
+{ "message": "已移除通知" }
+
+// 404
+{ "message": "找不到通知" }
+
+// 409
+{ "message": "待處理的好友邀請無法移除" }
+
+// 500
+{ "message": "伺服器錯誤" }
 ```
 
 ### PATCH `/api/notifications/read-all` — 全部通知已讀 🔒

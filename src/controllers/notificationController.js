@@ -1,9 +1,32 @@
 import {
+  dismissNotification as dismissNotificationService,
   listUserNotifications,
   markAllNotificationsAsRead,
   markNotificationAsRead,
   countUnreadNotifications,
 } from "../services/notificationService.js";
+
+export async function dismissNotification(req, res) {
+  try {
+    const outcome = await dismissNotificationService({
+      userId: req.user.userId,
+      notificationId: req.params.id,
+    });
+
+    if (outcome === "not_found") {
+      return res.status(404).json({ message: "找不到通知" });
+    }
+
+    if (outcome === "pending_friend_request") {
+      return res.status(409).json({ message: "待處理的好友邀請無法移除" });
+    }
+
+    return res.json({ message: "已移除通知" });
+  } catch (error) {
+    console.error("dismissNotification 錯誤：", error);
+    return res.status(500).json({ message: "伺服器錯誤" });
+  }
+}
 
 export async function listNotifications(req, res) {
   try {
