@@ -104,7 +104,7 @@ describe('createActivity - 情境二 range 模式', () => {
     const req = makeReq({
       body: {
         title: '情境二測試',
-        deadline: '2026-07-31T00:00:00.000Z',
+        deadline: new Date(2026, 6, 31).toISOString(),
         singleDate: '2026/08/01',
         timeWindowStart: '上午 9:00',
         timeWindowEnd: '下午 6:00',
@@ -124,7 +124,9 @@ describe('createActivity - 情境二 range 模式', () => {
               fixed_date: new Date(2026, 7, 1),
               time_window_start: new Date(2026, 7, 1, 9, 0),
               time_window_end: new Date(2026, 7, 1, 18, 0),
-              vote_deadline_at: new Date(2026, 7, 1, 9, 0),
+              // deadline_at 是伺服器算出的天花板（= time_window_start），vote_deadline_at 是送出的 deadline
+              deadline_at: new Date(2026, 7, 1, 9, 0),
+              vote_deadline_at: new Date(2026, 6, 31),
             }),
           },
           candidateSlots: { create: [] },
@@ -233,26 +235,44 @@ describe('joinActivity - 情境二 range 模式報名', () => {
     expect(prisma.activityAvailabilityRange.deleteMany).not.toHaveBeenCalled()
     expect(prisma.activityAvailabilityRange.createMany).not.toHaveBeenCalled()
   })
+
+  it('報名後達到 participant_target 時，轉入 voting 並通知建立者（Range-mode activity reaching target transitions to voting，不再被排除在外）', async () => {
+    prisma.activity.findUnique.mockResolvedValue(
+      makeRangeActivity({ status: 'recruiting', participant_target: 2, participants: [makeParticipant(CREATOR_ID)] }),
+    )
+    const res = makeRes()
+
+    const start = new Date('2026-08-01T10:00:00Z')
+    const end = new Date('2026-08-01T12:00:00Z')
+
+    await joinActivity(makeReq({ userId: PARTICIPANT_ID, body: { ranges: [{ start, end }] } }), res)
+
+    expect(prisma.activity.update).toHaveBeenCalledWith({ where: { id: ACTIVITY_ID }, data: { status: 'voting' } })
+    expect(prisma.notification.create).toHaveBeenCalledWith({
+      data: { user_id: CREATOR_ID, type: 'time_to_pick', reference_id: ACTIVITY_ID, reference_type: 'activity' },
+    })
+    expect(res.json).toHaveBeenCalledWith({ message: '報名成功' })
+  })
 })
 
-describe('joinActivity - deadline_at 已過的活動一律拒絕報名（四情境皆適用）', () => {
+describe('joinActivity - vote_deadline_at 已過的活動一律拒絕報名（四情境皆適用，不受 deadline_at 影響）', () => {
   beforeEach(() => {
     jest.clearAllMocks()
     prisma.$transaction.mockImplementation((arg) => (Array.isArray(arg) ? Promise.all(arg) : arg(prisma)))
     prisma.activityParticipant.findUnique.mockResolvedValue(null)
   })
 
-  it('status 仍是 recruiting 但 deadline_at < now 時拒絕報名、不建立 ActivityParticipant', async () => {
+  it('status 仍是 recruiting 但 vote_deadline_at < now 時拒絕報名、不建立 ActivityParticipant（即使 deadline_at 還沒到）', async () => {
     prisma.activity.findUnique.mockResolvedValue(
       makeRangeActivity({
         schedule: {
           requires_voting: true,
           availability_mode: 'range',
-          deadline_at: new Date('2020-01-01T00:00:00Z'),
+          deadline_at: new Date(2026, 7, 1),
           fixed_date: new Date(2026, 7, 1),
           time_window_start: null,
           time_window_end: null,
-          vote_deadline_at: new Date(2026, 7, 1),
+          vote_deadline_at: new Date('2020-01-01T00:00:00Z'),
           confirmedSlot: null,
         },
       }),
@@ -279,7 +299,50 @@ describe('getActivity - range 模式 decision_candidates', () => {
     prisma.activity.updateMany.mockResolvedValue({ count: 1 })
   })
 
-  it('回傳 decision_candidates 為 {perfect_overlap, partial_overlap}，只反映真人參與者送出的可用時間，不含建立者的幽靈投票', async () => {
+  it('非建立者請求時 decision_candidates 為 null；建立者請求時維持完整格式', async () => {
+    const activity = makeRangeActivity({
+      status: 'voting',
+      participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)],
+      availabilityRanges: [
+        {
+          user_id: PARTICIPANT_ID,
+          range_start: new Date(2026, 7, 1, 18, 0),
+          range_end: new Date(2026, 7, 1, 19, 0),
+        },
+      ],
+      schedule: {
+        requires_voting: true,
+        availability_mode: 'range',
+        deadline_at: new Date('2099-01-01T00:00:00Z'),
+        fixed_date: new Date(2026, 7, 1),
+        time_window_start: new Date(2026, 7, 1, 18, 0),
+        time_window_end: new Date(2026, 7, 1, 20, 0),
+        vote_deadline_at: new Date('2099-01-01T00:00:00Z'),
+        confirmedSlot: null,
+      },
+    })
+    prisma.activity.findUnique.mockResolvedValue(activity)
+
+    const nonCreatorRes = makeRes()
+    await getActivity(makeReq({ userId: PARTICIPANT_ID }), nonCreatorRes)
+    expect(nonCreatorRes.json).toHaveBeenCalledWith(
+      expect.objectContaining({ activity: expect.objectContaining({ decision_candidates: null }) }),
+    )
+
+    const creatorRes = makeRes()
+    await getActivity(makeReq({ userId: CREATOR_ID }), creatorRes)
+    expect(creatorRes.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activity: expect.objectContaining({
+          decision_candidates: [
+            expect.objectContaining({ slot_start: new Date(2026, 7, 1, 18, 0), count: 1 }),
+          ],
+        }),
+      }),
+    )
+  })
+
+  it('回傳 decision_candidates 為單一排序陣列，只反映真人參與者送出的可用時間，不含建立者的幽靈投票', async () => {
     const activity = makeRangeActivity({
       status: 'voting',
       participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)],
@@ -293,7 +356,7 @@ describe('getActivity - range 模式 decision_candidates', () => {
       schedule: {
         requires_voting: true,
         availability_mode: 'range',
-        deadline_at: new Date('2020-01-01T00:00:00Z'),
+        deadline_at: new Date('2099-01-01T00:00:00Z'),
         fixed_date: new Date(2026, 7, 1),
         time_window_start: new Date(2026, 7, 1, 18, 0),
         time_window_end: new Date(2026, 7, 1, 20, 0),
@@ -306,26 +369,21 @@ describe('getActivity - range 模式 decision_candidates', () => {
 
     await getActivity(makeReq(), res)
 
-    // 只有 1 個真人參與者送出可用時間，count 應該是 1，不是「+ 建立者虛擬整段有空」灌出來的 2
+    // 只有 1 個真人參與者送出可用時間，count 應該是 1，不是「+ 建立者虛擬整段有空」灌出來的 2；
+    // 整段連續 2 小時同一人支持，合併成一筆 18:00-20:00
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
         activity: expect.objectContaining({
           availability_mode: 'range',
-          decision_candidates: {
-            perfect_overlap: [
-              expect.objectContaining({
-                slot_start: new Date(2026, 7, 1, 18, 0),
-                slot_end: new Date(2026, 7, 1, 19, 0),
-                count: 1,
-              }),
-              expect.objectContaining({
-                slot_start: new Date(2026, 7, 1, 19, 0),
-                slot_end: new Date(2026, 7, 1, 20, 0),
-                count: 1,
-              }),
-            ],
-            partial_overlap: [],
-          },
+          decision_candidates: [
+            expect.objectContaining({
+              slot_start: new Date(2026, 7, 1, 18, 0),
+              slot_end: new Date(2026, 7, 1, 20, 0),
+              count: 1,
+              is_unanimous: true,
+              supporters: [{ user_id: PARTICIPANT_ID, display_name: PARTICIPANT_ID, avatar_url: null }],
+            }),
+          ],
         }),
       }),
     )
@@ -351,7 +409,7 @@ describe('getActivity - range 模式 decision_candidates', () => {
       schedule: {
         requires_voting: true,
         availability_mode: 'range',
-        deadline_at: new Date('2020-01-01T00:00:00Z'),
+        deadline_at: new Date('2099-01-01T00:00:00Z'),
         fixed_date: new Date(2026, 7, 1),
         time_window_start: new Date(2026, 7, 1, 18, 0),
         time_window_end: new Date(2026, 7, 1, 20, 0),
@@ -364,25 +422,18 @@ describe('getActivity - range 模式 decision_candidates', () => {
 
     await getActivity(makeReq(), res)
 
-    // 兩筆 range 都來自同一個 user_id，totalParticipants 去重後是 1，每一格仍然是 count 1 = 完全重疊
+    // 兩筆 range 都來自同一個 user_id，totalParticipants 去重後是 1，且相鄰同支持者的格子合併成一筆
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
         activity: expect.objectContaining({
-          decision_candidates: {
-            perfect_overlap: [
-              expect.objectContaining({
-                slot_start: new Date(2026, 7, 1, 18, 0),
-                slot_end: new Date(2026, 7, 1, 19, 0),
-                count: 1,
-              }),
-              expect.objectContaining({
-                slot_start: new Date(2026, 7, 1, 19, 0),
-                slot_end: new Date(2026, 7, 1, 20, 0),
-                count: 1,
-              }),
-            ],
-            partial_overlap: [],
-          },
+          decision_candidates: [
+            expect.objectContaining({
+              slot_start: new Date(2026, 7, 1, 18, 0),
+              slot_end: new Date(2026, 7, 1, 20, 0),
+              count: 1,
+              is_unanimous: true,
+            }),
+          ],
         }),
       }),
     )
@@ -452,8 +503,82 @@ describe('getActivity - range 模式 decision_candidates', () => {
       expect.objectContaining({
         activity: expect.objectContaining({
           my_ranges: [
-            { start: '2026-08-01T18:00:00.000Z', end: '2026-08-01T20:00:00.000Z' },
+            { start: '2026-08-01T18:00:00.000Z', end: '2026-08-01T20:00:00.000Z', co_participants: [] },
           ],
+        }),
+      }),
+    )
+  })
+
+  it('my_ranges 每筆正確附上 co_participants：時間重疊的真人參與者互相看得到，交接不重疊看不到，建立者不會出現', async () => {
+    const activity = makeRangeActivity({
+      status: 'voting',
+      participants: [
+        makeParticipant(CREATOR_ID),
+        makeParticipant(PARTICIPANT_ID),
+        makeParticipant('participant-2'),
+        makeParticipant('participant-3'),
+      ],
+      availabilityRanges: [
+        // 建立者殘留紀錄，理應完全不出現在任何人的 co_participants 裡
+        {
+          user_id: CREATOR_ID,
+          range_start: new Date(2026, 7, 1, 18, 0),
+          range_end: new Date(2026, 7, 1, 21, 0),
+        },
+        // PARTICIPANT_ID 跟 participant-2 時間重疊（18:00-20:00 vs 19:00-21:00）
+        {
+          user_id: PARTICIPANT_ID,
+          range_start: new Date(2026, 7, 1, 18, 0),
+          range_end: new Date(2026, 7, 1, 20, 0),
+        },
+        {
+          user_id: 'participant-2',
+          range_start: new Date(2026, 7, 1, 19, 0),
+          range_end: new Date(2026, 7, 1, 21, 0),
+        },
+        // participant-3 是交接情境：9:00-10:00，跟其他人完全不重疊
+        {
+          user_id: 'participant-3',
+          range_start: new Date(2026, 7, 1, 9, 0),
+          range_end: new Date(2026, 7, 1, 10, 0),
+        },
+      ],
+      schedule: {
+        requires_voting: true,
+        availability_mode: 'range',
+        deadline_at: new Date('2099-01-01T00:00:00Z'),
+        fixed_date: new Date(2026, 7, 1),
+        time_window_start: new Date(2026, 7, 1, 9, 0),
+        time_window_end: new Date(2026, 7, 1, 21, 0),
+        vote_deadline_at: new Date('2099-01-01T00:00:00Z'),
+        confirmedSlot: null,
+      },
+    })
+    prisma.activity.findUnique.mockResolvedValue(activity)
+
+    const res = makeRes()
+    await getActivity(makeReq({ userId: PARTICIPANT_ID }), res)
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activity: expect.objectContaining({
+          my_ranges: [
+            expect.objectContaining({
+              co_participants: [
+                expect.objectContaining({ user_id: 'participant-2' }),
+              ],
+            }),
+          ],
+        }),
+      }),
+    )
+
+    const res3 = makeRes()
+    await getActivity(makeReq({ userId: 'participant-3' }), res3)
+    expect(res3.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activity: expect.objectContaining({
+          my_ranges: [expect.objectContaining({ co_participants: [] })],
         }),
       }),
     )
@@ -484,7 +609,7 @@ describe('getActivity - range 模式 decision_candidates', () => {
     )
   })
 
-  it('取消報名者殘留的 availability ranges 不計入 perfect_overlap 或 partial_overlap', async () => {
+  it('取消報名者殘留的 availability ranges 不計入 decision_candidates', async () => {
     const activity = makeRangeActivity({
       status: 'voting',
       participants: [makeParticipant(CREATOR_ID)],
@@ -498,7 +623,7 @@ describe('getActivity - range 模式 decision_candidates', () => {
       schedule: {
         requires_voting: true,
         availability_mode: 'range',
-        deadline_at: new Date('2020-01-01T00:00:00Z'),
+        deadline_at: new Date('2099-01-01T00:00:00Z'),
         fixed_date: new Date(2026, 7, 1),
         time_window_start: new Date(2026, 7, 1, 18, 0),
         time_window_end: new Date(2026, 7, 1, 20, 0),
@@ -517,10 +642,58 @@ describe('getActivity - range 模式 decision_candidates', () => {
     expect(res.json).toHaveBeenCalledWith(
       expect.objectContaining({
         activity: expect.objectContaining({
-          decision_candidates: {
-            perfect_overlap: [],
-            partial_overlap: [],
-          },
+          decision_candidates: [],
+        }),
+      }),
+    )
+  })
+
+  it('建立者自己殘留的 availability range 紀錄不會被算進 count 或 supporters', async () => {
+    // 重現真實環境觀察到的問題：建立者本身是 joined participant，若資料庫裡殘留建立者自己
+    // 送出的 range，count/supporters 都不該包含建立者，只算真人參與者
+    const activity = makeRangeActivity({
+      status: 'voting',
+      participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)],
+      availabilityRanges: [
+        {
+          user_id: CREATOR_ID,
+          range_start: new Date(2026, 7, 1, 18, 0),
+          range_end: new Date(2026, 7, 1, 20, 0),
+        },
+        {
+          user_id: PARTICIPANT_ID,
+          range_start: new Date(2026, 7, 1, 19, 0),
+          range_end: new Date(2026, 7, 1, 20, 0),
+        },
+      ],
+      schedule: {
+        requires_voting: true,
+        availability_mode: 'range',
+        deadline_at: new Date('2099-01-01T00:00:00Z'),
+        fixed_date: new Date(2026, 7, 1),
+        time_window_start: new Date(2026, 7, 1, 18, 0),
+        time_window_end: new Date(2026, 7, 1, 20, 0),
+        vote_deadline_at: new Date('2099-01-01T00:00:00Z'),
+        confirmedSlot: null,
+      },
+    })
+    prisma.activity.findUnique.mockResolvedValue(activity)
+    const res = makeRes()
+
+    await getActivity(makeReq(), res)
+
+    expect(res.json).toHaveBeenCalledWith(
+      expect.objectContaining({
+        activity: expect.objectContaining({
+          decision_candidates: [
+            expect.objectContaining({
+              slot_start: new Date(2026, 7, 1, 19, 0),
+              slot_end: new Date(2026, 7, 1, 20, 0),
+              count: 1,
+              is_unanimous: true,
+              supporters: [{ user_id: PARTICIPANT_ID, display_name: PARTICIPANT_ID, avatar_url: null }],
+            }),
+          ],
         }),
       }),
     )
@@ -601,7 +774,7 @@ describe('getActivity - 情境二零提交自動取消', () => {
     prisma.activity.updateMany.mockResolvedValue({ count: 1 })
   })
 
-  it('recruiting、未設 participant_target、deadline_at 已過、除建立者外無人提交過 range -> 轉為 cancelled', async () => {
+  it('recruiting、未設 participant_target、vote_deadline_at 已過、除建立者外無人提交過 range -> 轉為 cancelled', async () => {
     const activity = makeRangeActivity({
       status: 'recruiting',
       participant_target: null,
@@ -609,11 +782,11 @@ describe('getActivity - 情境二零提交自動取消', () => {
       schedule: {
         requires_voting: true,
         availability_mode: 'range',
-        deadline_at: new Date('2020-01-01T00:00:00Z'),
+        deadline_at: new Date('2099-01-01T00:00:00Z'),
         fixed_date: new Date(2026, 7, 1),
         time_window_start: null,
         time_window_end: null,
-        vote_deadline_at: new Date('2099-01-01T00:00:00Z'),
+        vote_deadline_at: new Date('2020-01-01T00:00:00Z'),
         confirmedSlot: null,
       },
     })
@@ -646,11 +819,11 @@ describe('getActivity - 情境二零提交自動取消', () => {
       schedule: {
         requires_voting: true,
         availability_mode: 'range',
-        deadline_at: new Date('2020-01-01T00:00:00Z'),
+        deadline_at: new Date('2099-01-01T00:00:00Z'),
         fixed_date: new Date(2026, 7, 1),
         time_window_start: null,
         time_window_end: null,
-        vote_deadline_at: new Date('2099-01-01T00:00:00Z'),
+        vote_deadline_at: new Date('2020-01-01T00:00:00Z'),
         confirmedSlot: null,
       },
     })
@@ -699,13 +872,15 @@ describe('confirmFormation - range 模式確認成團', () => {
     prisma.activityCandidateSlot.create.mockResolvedValue({
       id: 'new-slot-1',
       slot_start: new Date(2026, 7, 1, 18, 0),
-      slot_end: new Date(2026, 7, 1, 19, 0),
+      slot_end: new Date(2026, 7, 1, 20, 0),
     })
     const res = makeRes()
 
+    // 唯一參與者送出的是連續 18:00-20:00，合併演算法會把整段合併成一筆候選，
+    // 所以要確認的是合併後的完整範圍，不是切格前的 18:00-19:00
     await confirmFormation(
       makeReq({
-        body: { slotStart: new Date(2026, 7, 1, 18, 0), slotEnd: new Date(2026, 7, 1, 19, 0) },
+        body: { slotStart: new Date(2026, 7, 1, 18, 0), slotEnd: new Date(2026, 7, 1, 20, 0) },
       }),
       res,
     )
@@ -714,7 +889,7 @@ describe('confirmFormation - range 模式確認成團', () => {
       data: {
         activity_id: ACTIVITY_ID,
         slot_start: new Date(2026, 7, 1, 18, 0),
-        slot_end: new Date(2026, 7, 1, 19, 0),
+        slot_end: new Date(2026, 7, 1, 20, 0),
         all_day: false,
       },
     })
@@ -759,5 +934,42 @@ describe('confirmFormation - range 模式確認成團', () => {
 
     expect(res.status).toHaveBeenCalledWith(400)
     expect(prisma.activityCandidateSlot.create).not.toHaveBeenCalled()
+  })
+
+  it('{slotStart, slotEnd} 命中候選格但開始時間已經過去時回 400，不建立 ActivityCandidateSlot（四情境皆適用的過期檢查）', async () => {
+    const activity = makeRangeActivity({
+      status: 'voting',
+      participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)],
+      availabilityRanges: [
+        {
+          user_id: PARTICIPANT_ID,
+          range_start: new Date(2020, 0, 1, 18, 0),
+          range_end: new Date(2020, 0, 1, 20, 0),
+        },
+      ],
+      schedule: {
+        requires_voting: true,
+        availability_mode: 'range',
+        deadline_at: new Date('2099-01-01T00:00:00Z'),
+        fixed_date: new Date(2020, 0, 1),
+        time_window_start: new Date(2020, 0, 1, 18, 0),
+        time_window_end: new Date(2020, 0, 1, 20, 0),
+        vote_deadline_at: new Date('2020-01-01T00:00:00Z'),
+        confirmedSlot: null,
+      },
+    })
+    prisma.activity.findUnique.mockResolvedValue(activity)
+    const res = makeRes()
+
+    await confirmFormation(
+      makeReq({
+        body: { slotStart: new Date(2020, 0, 1, 18, 0), slotEnd: new Date(2020, 0, 1, 20, 0) },
+      }),
+      res,
+    )
+
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(prisma.activityCandidateSlot.create).not.toHaveBeenCalled()
+    expect(prisma.activitySchedule.update).not.toHaveBeenCalled()
   })
 })

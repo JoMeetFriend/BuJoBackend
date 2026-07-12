@@ -16,24 +16,22 @@ For a voting-based activity (schedule variant `find_date` or `find_date_time`) i
 - **THEN** `decision_candidates` SHALL include both X and Y
 - **AND** X SHALL appear before Y in the list
 
-#### Scenario: find_date activity ranks candidates by vote count
+#### Scenario: find_date activity ranks candidates by vote count and identifies supporters
 
 - **WHEN** the activity's schedule variant is `find_date`
-- **THEN** each `decision_candidates` entry SHALL include the candidate slot's id, `slot_start`, `slot_end`, `count`, and whether `count` equals the number of joined participants
+- **THEN** each `decision_candidates` entry SHALL include the candidate slot's `id`, `slot_start`, `slot_end`, `count`, `is_unanimous` (whether `count` equals the number of real participants who submitted a vote, excluding the creator), and `supporters` (an array of `{user_id, display_name, avatar_url}` for every participant who voted for this slot)
 
 
 <!-- @trace
-source: scenario-d-matching-rework
-updated: 2026-07-11
+source: decision-view-ux-redesign
+updated: 2026-07-12
 code:
-  - API_DOCS.md
-  - prisma/schema.prisma
   - src/controllers/activityController.js
-  - .agents/skills/spectra-sync-specs/SKILL.md
-  - prisma/migrations/20260711003217_add_availability_range_to_candidate_slot_vote/migration.sql
+  - API_DOCS.md
 tests:
-  - src/__tests__/activityStateMachine.test.js
+  - src/__tests__/computeRangeRanking.test.js
   - src/__tests__/scenarioBRange.test.js
+  - src/__tests__/activityStateMachine.test.js
   - src/__tests__/computeSlotOverlapRanking.test.js
 -->
 
@@ -103,4 +101,57 @@ tests:
   - src/__tests__/activityStateMachine.test.js
   - src/__tests__/scenarioBRange.test.js
   - src/__tests__/computeSlotOverlapRanking.test.js
+-->
+
+---
+### Requirement: Fixed-time activities expose participant headcount and avatars to the creator
+
+For a fixed-time activity (schedule variant `fixed`, no voting), the activity detail API response SHALL include `current_count` and a `participants` array (each with `id`, `display_name`, `avatar_url`) reflecting everyone who has joined, on the same basis as voting-based activities.
+
+#### Scenario: Creator views a fixed-time activity with joined participants
+
+- **WHEN** the creator requests activity detail for a `fixed`-variant activity that two participants have joined
+- **THEN** the response SHALL include `current_count: 2`
+- **AND** the response SHALL include a `participants` array with both participants' `id`, `display_name`, and `avatar_url`
+
+<!-- @trace
+source: decision-view-ux-redesign
+updated: 2026-07-12
+code:
+  - src/controllers/activityController.js
+  - API_DOCS.md
+tests:
+  - src/__tests__/computeRangeRanking.test.js
+  - src/__tests__/scenarioBRange.test.js
+  - src/__tests__/activityStateMachine.test.js
+  - src/__tests__/computeSlotOverlapRanking.test.js
+-->
+
+---
+### Requirement: Decision candidates are restricted to the activity creator
+
+For a voting-based activity (schedule variant `find_date` or `find_date_time`) or a `range`-mode activity in status `recruiting` or `voting`, the `decision_candidates` field returned by the activity detail API SHALL be `null` when the requesting user is not the activity's creator. The full ranked candidate list SHALL continue to be returned, unchanged, when the requesting user is the creator.
+
+#### Scenario: Non-creator receives null decision_candidates
+
+- **WHEN** a joined non-creator participant requests activity detail for a `find_date_time` activity in `voting` status
+- **THEN** the response's `decision_candidates` SHALL be `null`
+
+#### Scenario: Creator still receives the full ranked list
+
+- **WHEN** the activity's creator requests activity detail for the same activity in `voting` status
+- **THEN** the response's `decision_candidates` SHALL include the full ranked list, unchanged from existing behavior
+
+<!-- @trace
+source: decision-view-participant-scope
+updated: 2026-07-12
+code:
+  - src/controllers/activityController.js
+  - API_DOCS.md
+tests:
+  - src/__tests__/collectOverlappingCoParticipants.test.js
+  - src/__tests__/computeSlotOverlapRanking.test.js
+  - src/__tests__/scenarioBRange.test.js
+  - src/__tests__/activityStateMachine.test.js
+  - src/__tests__/computeRangeRanking.test.js
 -->
