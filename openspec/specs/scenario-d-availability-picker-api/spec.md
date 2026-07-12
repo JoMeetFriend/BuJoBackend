@@ -8,12 +8,12 @@ TBD - created by archiving change 'scenario-d-availability-picker-join'. Update 
 
 ### Requirement: Scenario D vote deadline anchored to latest candidate slot
 
-For an activity using slot voting where the schedule variant is `find_date_time`, the system SHALL anchor the forced-decision deadline (`vote_deadline_at`) to the latest `slot_start` across all candidate slots, not to the creator-configured reminder deadline (`deadline_at`), which anchors to the earliest possible date.
+For an activity using slot voting where the schedule variant is `find_date_time`, the system SHALL anchor the decision deadline ceiling (`deadline_at`) to the latest `slot_start` across all candidate slots. The registration deadline (`vote_deadline_at`) SHALL be computed by subtracting the creator-selected offset from `deadline_at`, and SHALL always resolve to a timestamp strictly earlier than `deadline_at`.
 
-#### Scenario: Activity creation sets vote_deadline_at to the latest candidate slot
+#### Scenario: Activity creation sets deadline_at to the latest candidate slot
 
 - **WHEN** an activity is created with schedule variant `find_date_time` and multiple candidate slots across different dates and times
-- **THEN** the system SHALL set `vote_deadline_at` to the maximum `slot_start` among all candidate slots
+- **THEN** the system SHALL set `deadline_at` to the maximum `slot_start` among all candidate slots
 
 #### Scenario: Earlier candidate slot passing does not force a decision
 
@@ -21,22 +21,38 @@ For an activity using slot voting where the schedule variant is `find_date_time`
 - **THEN** the activity status SHALL remain `recruiting`
 - **AND** voting SHALL remain open for all candidate slots
 
-#### Scenario: Latest candidate slot passing forces a decision
+#### Scenario: Registration deadline passing transitions the activity out of recruiting
 
 - **WHEN** the current time is at or past `vote_deadline_at`
 - **THEN** the system SHALL transition the activity out of `recruiting` using the current vote counts
 
+#### Scenario: Latest candidate slot passing without confirmation auto-cancels
+
+- **WHEN** the current time is at or past `deadline_at`, the activity is in `voting` status, and the creator has not called `confirmFormation`
+- **THEN** the system SHALL transition the activity to `cancelled`, per the cross-scenario requirement in `activity-formation-confirmation`
 
 <!-- @trace
-source: scenario-d-availability-picker-join
-updated: 2026-07-11
+source: deadline-model-redesign
 code:
-  - prisma/migrations/20260711003217_add_availability_range_to_candidate_slot_vote/migration.sql
-  - prisma/schema.prisma
   - src/controllers/activityController.js
   - API_DOCS.md
 tests:
   - src/__tests__/activityStateMachine.test.js
+-->
+
+
+<!-- @trace
+source: deadline-model-redesign
+updated: 2026-07-12
+code:
+  - src/controllers/activityController.js
+  - API_DOCS.md
+tests:
+  - src/__tests__/activityStateMachine.test.js
+  - src/__tests__/computeRangeRanking.test.js
+  - src/__tests__/scenarioBRange.test.js
+  - src/__tests__/collectOverlappingCoParticipants.test.js
+  - src/__tests__/computeSlotOverlapRanking.test.js
 -->
 
 ---

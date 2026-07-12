@@ -208,75 +208,73 @@ tests:
 -->
 
 ---
-### Requirement: Vote deadline auto-cancellation
-
-For a `range`-mode activity in `voting` status, the system SHALL automatically transition the activity to `cancelled` when `vote_deadline_at` has passed and the creator has not confirmed a slot.
-
-#### Scenario: Creator misses the vote deadline
-
-- **WHEN** a lazy status check runs for an activity in `voting` status where `vote_deadline_at < now` and `confirmed_slot_id` is still unset
-- **THEN** the system SHALL transition the activity to `cancelled` and SHALL notify all participants
-
-<!-- @trace
-source: scenario-b-availability-redesign
-updated: 2026-07-09
-code:
-  - prisma/schema.prisma
-  - prisma/migrations/20260709133702_add_availability_range/migration.sql
-  - src/controllers/activityController.js
-  - API_DOCS.md
-tests:
-  - src/__tests__/scenarioBRange.test.js
-  - src/__tests__/computeRangeRanking.test.js
-  - src/__tests__/activityStateMachine.test.js
--->
-
----
 ### Requirement: Zero-submission cancellation without a participant cap
 
-For a `range`-mode activity with no `participant_target` set, the system SHALL automatically transition the activity to `cancelled` when `deadline_at` has passed and no participant other than the creator has submitted any availability.
+For a `range`-mode activity with no `participant_target` set, the system SHALL automatically transition the activity to `cancelled` when `vote_deadline_at` has passed and no participant other than the creator has submitted any availability.
 
 #### Scenario: Recruiting deadline passes with no submissions and no cap
 
-- **WHEN** a lazy status check runs for a `recruiting`, `range`-mode activity where `participant_target` is null, `deadline_at < now`, and no `ActivityAvailabilityRange` record exists for any participant other than the creator
+- **WHEN** a lazy status check runs for a `recruiting`, `range`-mode activity where `participant_target` is null, `vote_deadline_at < now`, and no `ActivityAvailabilityRange` record exists for any participant other than the creator
 - **THEN** the system SHALL transition the activity to `cancelled` and SHALL notify the creator
 
 <!-- @trace
-source: scenario-b-availability-redesign
-updated: 2026-07-09
+source: deadline-model-redesign
 code:
-  - prisma/schema.prisma
-  - prisma/migrations/20260709133702_add_availability_range/migration.sql
   - src/controllers/activityController.js
   - API_DOCS.md
 tests:
   - src/__tests__/scenarioBRange.test.js
-  - src/__tests__/computeRangeRanking.test.js
   - src/__tests__/activityStateMachine.test.js
+-->
+
+
+<!-- @trace
+source: deadline-model-redesign
+updated: 2026-07-12
+code:
+  - src/controllers/activityController.js
+  - API_DOCS.md
+tests:
+  - src/__tests__/activityStateMachine.test.js
+  - src/__tests__/computeRangeRanking.test.js
+  - src/__tests__/scenarioBRange.test.js
+  - src/__tests__/collectOverlappingCoParticipants.test.js
+  - src/__tests__/computeSlotOverlapRanking.test.js
 -->
 
 ---
 ### Requirement: Join rejects activities past their deadline
 
-Regardless of availability mode, the system SHALL reject a join request when the activity's `deadline_at` has already passed, even if the activity's stored status has not yet been transitioned by a lazy check.
+Regardless of availability mode, the system SHALL reject a join request when the activity's `vote_deadline_at` has already passed, even if the activity's stored status has not yet been transitioned by a lazy check.
 
 #### Scenario: Joining an expired but not-yet-transitioned activity
 
-- **WHEN** a user submits `POST /:id/join` for an activity whose `status` is still `recruiting` but `deadline_at < now`
+- **WHEN** a user submits `POST /:id/join` for an activity whose `status` is still `recruiting` but `vote_deadline_at < now`
 - **THEN** the system SHALL reject the request with an error indicating the activity has expired, and SHALL NOT create an `ActivityParticipant` record
 
 <!-- @trace
-source: scenario-b-availability-redesign
-updated: 2026-07-09
+source: deadline-model-redesign
 code:
-  - prisma/schema.prisma
-  - prisma/migrations/20260709133702_add_availability_range/migration.sql
   - src/controllers/activityController.js
   - API_DOCS.md
 tests:
   - src/__tests__/scenarioBRange.test.js
-  - src/__tests__/computeRangeRanking.test.js
   - src/__tests__/activityStateMachine.test.js
+-->
+
+
+<!-- @trace
+source: deadline-model-redesign
+updated: 2026-07-12
+code:
+  - src/controllers/activityController.js
+  - API_DOCS.md
+tests:
+  - src/__tests__/activityStateMachine.test.js
+  - src/__tests__/computeRangeRanking.test.js
+  - src/__tests__/scenarioBRange.test.js
+  - src/__tests__/collectOverlappingCoParticipants.test.js
+  - src/__tests__/computeSlotOverlapRanking.test.js
 -->
 
 ---
