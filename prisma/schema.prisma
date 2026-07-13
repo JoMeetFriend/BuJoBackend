@@ -12,8 +12,9 @@ model User {
   display_name     String
   avatar_url       String?
   avatar_public_id String?
-  created_at       DateTime @default(now()) @db.Timestamptz
-  updated_at       DateTime @updatedAt @db.Timestamptz
+  bio              String?
+  created_at DateTime @default(now()) @db.Timestamptz
+  updated_at DateTime @updatedAt @db.Timestamptz
 
   identities                 UserIdentity[]
   sentRequests               Friendship[]                @relation("Requester")
