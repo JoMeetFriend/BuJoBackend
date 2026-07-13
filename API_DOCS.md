@@ -643,3 +643,227 @@ const res = await fetch("http://localhost:3000/api/users/me/avatar", {
   "count": 3
 }
 ```
+
+## Activity — 情境二（日期固定・時間讓大家選）range 模式
+
+> 情境一（全固定）、情境三（候選日期・時間固定）、情境四（候選日期・各自時段）維持既有的候選時段勾選投票制不變，不在此列出。情境二改為「參與者自由回報可用時間範圍，系統計算重疊排序」，`ActivitySchedule.availability_mode` 為 `'range'` 時即為情境二。
+
+### `POST /api/activities` 的 `deadline` 欄位語意（四情境統一，`deadline-model-redesign`）
+
+> **BREAKING**：`deadline` 欄位不再是決策硬截止天花板，改成代表「建立者選擇的報名截止時間」，寫入 `ActivitySchedule.vote_deadline_at`。決策硬截止天花板 `deadline_at` 完全由伺服器依情境公式計算，不接受客戶端輸入，且保證不晚於活動實際發生時間：
+>
+> | 情境 | `deadline_at`（伺服器計算，天花板） |
+> | --- | --- |
+> | A 固定時段 | 活動本身的開始時間（`slot_start`） |
+> | B range 模式 | `time_window_start`；未提供時間窗則為 `fixed_date` |
+> | C find_date | 所有候選時段中最晚一筆的 `slot_start` |
+> | D find_date_time | 所有候選時段中最晚一筆的 `slot_start` |
+>
+> `POST /api/activities` 會依序驗證：① 伺服器算出的 `deadline_at` 必須晚於現在，否則 `400`；② 送出的 `deadline`（即將寫入 `vote_deadline_at`）必須早於算出的 `deadline_at`，否則 `400`。兩項皆通過才會建立活動。四個情境的 `GET /api/activities/:id` 回應都會有非 null 的 `vote_deadline_at`（情境一過去完全沒有這個欄位，這次補上）。
+>
+> `POST /:id/join` 的報名截止檢查改讀 `vote_deadline_at`，不再是 `deadline_at`。`confirmFormation` 新增「所選候選時段的開始時間不能已經過去」的檢查，四情境皆適用，錯誤訊息為「此時段已經過去，請重新選擇」。任何情境到期都不再自動 `confirmed`——一律先轉入 `voting`（決策緩衝狀態）並通知建立者，`voting` 狀態逾期（`deadline_at` 已到）且建立者尚未手動確認時，系統才會自動轉為 `cancelled`，並通知建立者與所有已報名參與者。
+
+### 情境四（候選日期・各自時段）— 參與者自選子區間
+
+> 情境四的候選時段是建立者為每個候選日開的獨立時段，**每個候選日期只能對應一組時段**（`POST /api/activities` 建立時若 `dateSlots` 出現重複日期會回 `400`，訊息「每個候選日期只能設定一組時段」）。參與者報名時除了勾選 `candidateSlotIds`，還可以附上在該時段窗口內自選的子區間 `candidateSlotRanges`。子區間不影響「哪個候選時段勝出」的 `is_selected`／票數二元計票邏輯，但**會**餵給該候選時段的交集運算（見下方 `GET /api/activities/:id` 的 `decision_candidates`），用來算出這個候選時段內大家實際上重疊的窄窗口。
+
+**POST `/api/activities/:id/join` — Request Body（情境四新增欄位）**
+
+| 欄位                 | 類型                                             | 必填 | 說明                                                                     |
+| -------------------- | ------------------------------------------------ | ---- | ------------------------------------------------------------------------ |
+| `candidateSlotRanges` | `{candidateSlotId, rangeStart, rangeEnd}[]`（`rangeStart`/`rangeEnd` 為 ISO 字串） | 選填 | 每筆對應 `candidateSlotIds` 中的一個時段，記錄參與者在該時段窗口內自選的子區間 |
+
+- 每筆 `rangeStart`/`rangeEnd` 必須落在對應 `candidateSlotId` 的 `slot_start`～`slot_end` 之間，否則整個請求回 `400`、不寫入任何資料
+- `candidateSlotIds` 中沒有對應 `candidateSlotRanges` 條目的時段，仍正常計票，只是不記錄子區間
+- 已報名參與者在 `recruiting` 階段重新呼叫此 API（比照情境三的重送邏輯）一樣適用，會先刪除舊的 `ActivityAvailability` 再寫入新的
+
+**GET `/api/activities/:id` — Response（`candidate_slots[]` 新增欄位）**
+
+| 欄位        | 類型                            | 說明                                                             |
+| ----------- | ------------------------------- | ------------------------------------------------------------------ |
+| `my_range`  | `{start, end}`（ISO 字串）或 `null` | 目前使用者自己存的子區間；沒投該時段或投了但沒存子區間時為 `null` |
+| `co_participants` | `{user_id, display_name, avatar_url}[]` | 非建立者才有意義：跟自己在這個候選時段有時間重疊的其他真人參與者，詳見下方 `GET /api/activities/:id` 的 `co_participants` 說明 |
+
+### POST `/api/activities` — 建立情境二活動 🔒
+
+**Request Body（情境二專屬欄位）**
+
+| 欄位              | 類型   | 必填 | 說明                                              |
+| ----------------- | ------ | ---- | ------------------------------------------------- |
+| `singleDate`      | string | ✅   | 活動固定日期                                       |
+| `timeWindowStart` | string | 選填 | 允許回報的時間範圍起點；不設 = 當天全天皆可         |
+| `timeWindowEnd`   | string | 選填 | 允許回報的時間範圍終點；不設 = 當天全天皆可         |
+
+> 不需要 `slots`（候選時段列表）——建立活動時不會產生任何 `ActivityCandidateSlot`。`creatorSlotIndexes` 欄位已整個移除（情境三／四也一樣），建立者不會在任何情境的重疊排序/票數計算中被算進去——建立者對自己建立的候選時段有空是結構性保證的事實，不需要額外資料佐證，也不該算進「這個時段有多少人支持」的計票裡。
+
+**Response**：同其他情境，`201` 回傳 `{ "activity": { "id": "uuid" } }`。
+
+### POST `/api/activities/:id/join` — 報名並回報可用時間 🔒
+
+> **BREAKING**：情境二的 body 從 `{candidateSlotIds}` 改為 `{ranges: [{start, end}]}`。已報名者可在 `recruiting`／`voting` 狀態重新呼叫此 API 送出新的 `ranges`，後端會先刪除該使用者舊的回報再寫入新的。
+
+**Request Body（情境二）**
+
+| 欄位     | 類型                          | 必填 | 說明                     |
+| -------- | ----------------------------- | ---- | ------------------------ |
+| `ranges` | `{start, end}[]`（ISO 字串）  | ✅   | 一段或多段可用時間，不可為空 |
+
+**Response**
+
+| 狀態碼 | 說明                                                         |
+| ------ | ------------------------------------------------------------ |
+| `200`  | 報名 / 重新回報成功                                           |
+| `400`  | `ranges` 為空 / 超出 `time_window_start`／`time_window_end` / 活動已截止報名（`vote_deadline_at` 已過，四情境皆適用） |
+
+### GET `/api/activities/:id` — 取得活動詳情 🔒
+
+> **BREAKING**：`decision_candidates` 只有建立者（`is_creator: true`）的回應才會附上完整資料；非建立者（已報名的參與者）的回應一律是 `null`。參與者要知道「跟自己同時段的人」，改看 `my_ranges[]`（情境二）／`candidate_slots[]`（情境三／四）裡新增的 `co_participants` 欄位——只列出跟自己已回報/已選的時段有時間重疊的其他真人參與者，不含建立者、不含自己，範圍窄很多，不是完整的投票排名。
+
+`decision_candidates` 依 `activity.schedule_variant` 分三種格式，前端需依此判斷，不能只看 `availability_mode`。情境二／三是單一排序陣列；情境四是「候選時段」外層陣列，每筆再帶一個內層 `segments` 陣列。三種格式裡的 segment 都統一帶 `is_unanimous`／`supporters`，不再有「完全重疊」「部分重疊」的分類鍵名，後端也不再自行限制回傳筆數（以下範例皆為建立者視角的回應）：
+
+```json
+// availability_mode: "range"（情境二）—單一排序陣列，依 count 由高到低排序；相鄰、count 相同、
+// 支持者集合完全相同的切格區段已經合併成一筆
+{
+  "activity": {
+    "availability_mode": "range",
+    "decision_candidates": [
+      {
+        "id": "temp-2026-08-01T09:00:00.000Z",
+        "slot_start": "...",
+        "slot_end": "...",
+        "count": 3,
+        "is_unanimous": true,
+        "supporters": [{ "user_id": "u1", "display_name": "Alice", "avatar_url": null }]
+      }
+    ]
+  }
+}
+
+// schedule_variant: "find_date"（情境三）—扁平陣列，包含每一個候選日期，依票數由高到低排序
+{
+  "activity": {
+    "schedule_variant": "find_date",
+    "decision_candidates": [
+      {
+        "id": "slot-a",
+        "slot_start": "...",
+        "slot_end": "...",
+        "count": 3,
+        "is_unanimous": false,
+        "supporters": [{ "user_id": "u1", "display_name": "Alice", "avatar_url": null }]
+      },
+      { "id": "slot-b", "slot_start": "...", "slot_end": "...", "count": 1, "is_unanimous": false, "supporters": [] }
+    ]
+  }
+}
+
+// schedule_variant: "find_date_time"（情境四）—外層是候選時段陣列，依候選時段自己的總票數 count 由高到低排序；
+// 內層 segments 是該候選時段窗口內子區間交集運算的合併結果，同樣依 count 由高到低排序
+{
+  "activity": {
+    "schedule_variant": "find_date_time",
+    "decision_candidates": [
+      {
+        "id": "slot-a",
+        "slot_start": "...",
+        "slot_end": "...",
+        "count": 3,
+        "segments": [
+          {
+            "id": "temp-...",
+            "slot_start": "...",
+            "slot_end": "...",
+            "count": 3,
+            "is_unanimous": true,
+            "supporters": [{ "user_id": "u1", "display_name": "Alice", "avatar_url": null }]
+          }
+        ]
+      }
+    ]
+  }
+}
+```
+
+- **BREAKING**：情境三／四的 `decision_candidates` 不再只回傳並列最高票的候選時段，改成回傳**所有**候選時段，依支持度由高到低排序——前端要能顯示完整清單，不能假設只有一筆或只有並列最高票那幾筆
+- **BREAKING**：情境二不再回傳 `{perfect_overlap, partial_overlap}` 雙陣列，改成單一排序陣列；情境四內層也不再是 `perfect_overlap`／`partial_overlap`，改成單一 `segments` 陣列。三種情境的 segment 都新增 `supporters`（投給該筆的參與者 `user_id`／`display_name`／`avatar_url`）
+- 情境二／四相鄰、`count` 相同、且 `supporters` 對應的參與者集合完全相同的切格區段會合併成一筆，`slot_start`／`slot_end` 分別取最早／最晚——避免一個人連續一大段可用時間被拆成好幾筆幾乎相同的列
+- `is_unanimous`：情境二的分母是真人送出者依 `user_id` 去重數；情境三／四的分母是真人參與者人數，兩者皆**不含建立者**（建立者對自己建立的候選時段/活動有空是結構性保證的事實，不算主動投票）
+- 情境四每個候選時段的 `count` 是投給這個候選時段的真人參與者總人數（不是內層 `segments` 交集運算的重疊人數，也不含建立者）；`segments` 是對這個候選時段自己的 `slot_start`～`slot_end` 範圍，把投給它的真人參與者子區間（沒填子區間視為整個候選時段都覆蓋）做跟情境二一樣的切格交集運算
+- `decision_candidates`（情境二／情境四 `segments`）裡的 `id` 是 `temp-` 前綴、非真實 `ActivityCandidateSlot.id`；情境三／情境四外層的 `id` 是真實 `ActivityCandidateSlot.id`
+
+**非建立者的 `co_participants`（`my_ranges[]`／`candidate_slots[]` 新增欄位）**
+
+```json
+// 情境二（range 模式）——my_ranges[] 每筆新增 co_participants
+{
+  "activity": {
+    "my_ranges": [
+      {
+        "start": "2026-08-01T18:00:00.000Z",
+        "end": "2026-08-01T20:00:00.000Z",
+        "co_participants": [{ "user_id": "u2", "display_name": "Bob", "avatar_url": null }]
+      }
+    ]
+  }
+}
+
+// 情境三／四——candidate_slots[] 每筆新增 co_participants
+{
+  "activity": {
+    "candidate_slots": [
+      {
+        "id": "slot-a",
+        "is_selected": true,
+        "co_participants": [{ "user_id": "u2", "display_name": "Bob", "avatar_url": null }]
+      },
+      { "id": "slot-b", "is_selected": false, "co_participants": [] }
+    ]
+  }
+}
+```
+
+- `co_participants` 只有非建立者的回應才有意義；建立者的回應裡這個欄位固定是空陣列（建立者直接看完整的 `decision_candidates`，不需要這個欄位）
+- 情境二：跟這筆 `my_ranges` 條目自己的 `start`～`end` 有時間實際重疊的其他真人參與者（不含建立者、不含自己）
+- 情境三：候選時段本身沒有子區間，顆粒度是「選了同一天」——同一個候選時段的其他真人參與者
+- 情境四：跟自己在這個候選時段的子區間（`my_range`，沒填視為整個候選時段窗口）有時間實際重疊的其他真人參與者，用該候選時段自己的交集運算結果篩選，不是整個候選時段隨便算
+- `candidate_slots[]` 裡 `is_selected: false` 的項目，`co_participants` 一律是空陣列——不會洩漏使用者自己沒選的候選時段裡別人選了誰
+- 「有時間重疊」是嚴格判斷（交接情境，例如一人 9:00-10:00、另一人 10:00-11:00，不算重疊），不是「選了同一個候選時段就算」
+
+### POST `/api/activities/:id/confirm-formation` — 建立者確認成團 🔒
+
+> 情境二改用 `{ slotStart, slotEnd }`（而非 `candidateSlotId`）指定要確認的格子，須與目前 `decision_candidates` 中的某一筆完全相符。後端會在確認的當下才臨時建立一筆 `ActivityCandidateSlot` 並寫入 `confirmed_slot_id`。
+
+**Request Body（情境二）**
+
+| 欄位        | 類型               | 必填 | 說明                                  |
+| ----------- | ------------------ | ---- | ------------------------------------- |
+| `slotStart` | string（ISO 字串） | ✅   | 須與 `decision_candidates` 中某筆一致 |
+| `slotEnd`   | string（ISO 字串） | ✅   | 須與 `decision_candidates` 中某筆一致 |
+
+**Request Body（情境三）**
+
+| 欄位             | 類型   | 必填 | 說明                                                       |
+| ---------------- | ------ | ---- | ------------------------------------------------------------ |
+| `candidateSlotId` | string | ✅   | 任何屬於這個活動的候選時段皆可，**不再限制必須是並列最高票** |
+
+**Request Body（情境四）**
+
+| 欄位             | 類型               | 必填 | 說明                                                                 |
+| ---------------- | ------------------ | ---- | ---------------------------------------------------------------------- |
+| `candidateSlotId` | string             | ✅   | 要確認的候選時段（決定要用哪個候選時段的交集運算結果）                  |
+| `slotStart`       | string（ISO 字串） | ✅   | 須與該候選時段 `decision_candidates[].segments` 中某一筆完全相符 |
+| `slotEnd`         | string（ISO 字串） | ✅   | 同上                                                                   |
+
+> **BREAKING**：情境四不再直接採用候選時段的原始邊界當最終時間，改成從交集運算結果裡選一個窄窗口，比照情境二在確認當下才臨時建立新的 `ActivityCandidateSlot`。
+
+**Response**
+
+| 狀態碼 | 說明                                             |
+| ------ | ------------------------------------------------ |
+| `200`  | 成團成功                                         |
+| `400`  | 此活動狀態不允許確認成團 / 時段不在候選名單中     |
+
+### 人數滿額不再自動成團
+
+> **BREAKING**：`POST /api/activities/:id/join` 讓報名人數達到 `participant_target` 時，四個情境皆不再自動把活動狀態設為 `confirmed`。免投票（情境一）維持 `recruiting`；投票制（情境三／四）不論票數或交集是否一致，一律轉為 `voting`。兩種情況都會發送 `time_to_pick` 通知給建立者，最終成團一律要建立者手動呼叫 `POST /api/activities/:id/confirm-formation`。情境二本來就是如此，不受影響。
