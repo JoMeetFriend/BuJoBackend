@@ -83,10 +83,24 @@ export async function createActivity(req, res) {
     scheduleExtra = { availability_mode: 'slot', deadline_at: slotStart }
   }
 
+  // 日期解析失敗（例如送 ISO 格式而不是 YYYY/MM/DD + 上午/下午時制）產生的 Invalid Date
+  // 與任何比較運算都是 false，會一路穿過後面的檢查直到 Prisma 寫入才炸 500——在這裡統一擋下
+  const voteDeadlineAt = new Date(deadline)
+  const datesToValidate = [
+    scheduleExtra.deadline_at,
+    scheduleExtra.fixed_date,
+    scheduleExtra.time_window_start,
+    scheduleExtra.time_window_end,
+    voteDeadlineAt,
+    ...candidateSlotsData.flatMap((s) => [s.slot_start, s.slot_end]),
+  ]
+  if (datesToValidate.some((d) => d != null && Number.isNaN(d.getTime()))) {
+    return res.status(400).json({ message: '日期或時間格式不正確' })
+  }
+
   if (scheduleExtra.deadline_at <= new Date()) {
     return res.status(400).json({ message: '活動時間已經過去，請調整活動時間' })
   }
-  const voteDeadlineAt = new Date(deadline)
   // 「無報名緩衝」的極端 fallback（活動快開始、連最小預設都不安全）刻意讓 vote_deadline_at
   // 等於 deadline_at，這是合法狀態，不能用 >= 擋掉，只有「晚於」天花板才是真的不合理
   if (voteDeadlineAt > scheduleExtra.deadline_at) {

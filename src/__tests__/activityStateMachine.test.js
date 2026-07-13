@@ -2592,3 +2592,53 @@ describe('joinActivity／confirmFormation／cancelActivity 的 LINE 推播接線
     expect(res.json).toHaveBeenCalledWith({ message: '報名成功' })
   })
 })
+
+describe('createActivity - 日期時間格式錯誤回 400 而不是 500', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+  })
+
+  it('情境一送 ISO 日期格式（非 YYYY/MM/DD + 上午/下午時制）時回 400，不建立任何紀錄', async () => {
+    const res = makeRes()
+
+    await createActivity(
+      makeReq({
+        body: {
+          title: '格式錯誤活動',
+          deadline: '2099-07-20T12:00:00.000Z',
+          startDate: '2099-07-25',
+          startTime: '10:00',
+          endDate: '2099-07-25',
+          endTime: '12:00',
+        },
+      }),
+      res,
+    )
+
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(res.json).toHaveBeenCalledWith({ message: '日期或時間格式不正確' })
+    expect(prisma.activity.create).not.toHaveBeenCalled()
+  })
+
+  it('報名截止時間（deadline）無法解析時回 400，不建立任何紀錄', async () => {
+    const res = makeRes()
+
+    await createActivity(
+      makeReq({
+        body: {
+          title: '格式錯誤活動',
+          deadline: 'not-a-date',
+          startDate: '2099/07/25',
+          startTime: '上午 10:00',
+          endDate: '2099/07/25',
+          endTime: '上午 11:00',
+        },
+      }),
+      res,
+    )
+
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(res.json).toHaveBeenCalledWith({ message: '日期或時間格式不正確' })
+    expect(prisma.activity.create).not.toHaveBeenCalled()
+  })
+})
