@@ -263,6 +263,101 @@ const res = await fetch("http://localhost:3000/api/users/me/avatar", {
 { "message": "頭像圖片不可超過 2MB" }
 ```
 
+### PATCH `/api/users/me/name` — 更換目前使用者名稱 🔒
+
+> 需要登入（cookie 中有效的 `token`）。前端需傳送 JSON 格式的請求主體。後端會清除前後空白字元，並驗證長度與格式。
+
+**Request Body**
+
+| **欄位**       | **類型** | **必填** | **說明**                                       |
+| -------------- | -------- | -------- | ---------------------------------------------- |
+| `display_name` | string   | ✅       | 新的顯示名稱，不可為空白，且不可超過 50 個字元 |
+
+```json
+{
+  "display_name": "超級小明"
+}
+```
+
+**Response**
+
+| **狀態碼** | **說明**                                       |
+| ---------- | ---------------------------------------------- |
+| `200`      | 名稱更新成功                                   |
+| `400`      | 無效的名稱格式 / 名稱不可為空白 / 超過 50 字元 |
+| `401`      | 未登入 / token 無效或已過期                    |
+| `500`      | 伺服器內部錯誤                                 |
+
+```json
+// 200 成功
+{
+  "message": "名稱更新成功",
+  "user": {
+    "id": "uuid",
+    "display_name": "超級小明",
+    "avatar_url": "https://..."
+  }
+}
+
+// 400 格式錯誤或空白
+{ "message": "無效的名稱格式" }
+// 或是
+{ "message": "顯示名稱不可為空白" }
+
+// 400 超過長度限制
+{ "message": "顯示名稱不可超過 50 個字元" }
+
+// 401 沒登入
+{ "message": "未登入" }
+```
+
+### PATCH `/api/users/me/bio` — 更新目前使用者的簡介 🔒
+
+> 需要登入（cookie 中有效的 `token`）。前端需傳送 JSON 格式的請求主體。後端會自動清除字串前後的空白，並驗證長度不可超過 150 個字元。允許傳入空字串或純空白字串來清空目前的簡介。
+
+**Request Body**
+
+| 欄位  | 類型   | 必填 | 說明                                      |
+| ----- | ------ | ---- | ----------------------------------------- |
+| `bio` | string | ✅   | 新的使用者簡介，長度限制為 150 個字元以內 |
+
+```json
+{
+  "bio": "這是我熱愛寫程式的新簡介。"
+}
+```
+
+**Response**
+
+| **狀態碼** | **說明**                             |
+| ---------- | ------------------------------------ |
+| `200`      | 簡介更新成功                         |
+| `400`      | 無效的簡介格式 / 簡介超過 150 個字元 |
+| `401`      | 未登入 / token 無效或已過期          |
+| `500`      | 伺服器內部錯誤                       |
+
+```json
+// 200 成功
+{
+  "message": "簡介更新成功",
+  "user": {
+    "id": "uuid",
+    "display_name": "超級小明",
+    "bio": "這是我熱愛寫程式的新簡介。"
+  }
+}
+
+// 400 格式錯誤
+{ "message": "無效的簡介格式" }
+
+// 400 超過長度限制
+{ "message": "簡介不可超過 150 個字元" }
+
+// 401 沒登入
+{ "message": "未登入" }
+
+```
+
 ### POST `/api/friends/request` — 發送好友請求 🔒
 
 > 需要登入（cookie 中有效的 `token`）
@@ -390,6 +485,45 @@ const res = await fetch("http://localhost:3000/api/users/me/avatar", {
 }
 ```
 
+### DELETE `/api/friendships/:id` — 刪除好友 (軟刪除) 🔒
+
+> 需要登入（cookie 中有效的 `token`）。
+> **注意：** 網址上的 `:id` 必須是 **`friendship` 的 ID**，而不是對方的 `user ID`。
+> 只有該好友關係的雙方當事人可以執行刪除，且該關係的狀態必須為 `accepted`。刪除後狀態將變更為 `deleted`。
+
+**Response**
+
+| 狀態碼 | 說明                              |
+| ------ | --------------------------------- |
+| `200`  | 已刪除好友                        |
+| `400`  | 此狀態無法刪除好友 (非 accepted)  |
+| `401`  | 未登入 / token 無效或已過期       |
+| `403`  | 無權操作此好友關係 (非雙方當事人) |
+| `404`  | 找不到該好友關係                  |
+
+```json
+// 200 成功
+{
+  "message": "已刪除好友",
+  "friendship": {
+    "id": "uuid",
+    "status": "deleted"
+  }
+}
+
+// 400 狀態不對
+{ "message": "此狀態無法刪除好友" }
+
+// 401 沒登入
+{ "message": "未登入" }
+
+// 403 越權操作 (IDOR 防禦)
+{ "message": "無權操作此好友關係" }
+
+// 404 找不到
+{ "message": "找不到該好友關係" }
+```
+
 ### GET `/api/friends` — 取得好友列表 🔒
 
 > 需要登入（cookie 中有效的 `token`）
@@ -425,10 +559,10 @@ const res = await fetch("http://localhost:3000/api/users/me/avatar", {
 
 **Response**
 
-| 狀態碼 | 說明                          |
-| ------ | ----------------------------- |
-| `200`  | 成功，回傳目前登入者通知列表  |
-| `401`  | 未登入 / token 無效或已過期   |
+| 狀態碼 | 說明                         |
+| ------ | ---------------------------- |
+| `200`  | 成功，回傳目前登入者通知列表 |
+| `401`  | 未登入 / token 無效或已過期  |
 
 ```json
 // 200
@@ -455,11 +589,11 @@ const res = await fetch("http://localhost:3000/api/users/me/avatar", {
 
 **通知類型**
 
-| type                      | category   | message 格式                              | actions              |
-| ------------------------- | ---------- | ----------------------------------------- | -------------------- |
-| `friend_request_created`  | `friend`   | `{requesterName} 向你發送好友邀請`        | pending 時可接受/拒絕 |
-| `friend_request_accepted` | `friend`   | `{receiverName} 接受了你的好友邀請`       | 無                   |
-| `activity_created`        | `activity` | `{creatorName} 建立了新活動：{activity}`  | 無                   |
+| type                      | category   | message 格式                             | actions               |
+| ------------------------- | ---------- | ---------------------------------------- | --------------------- |
+| `friend_request_created`  | `friend`   | `{requesterName} 向你發送好友邀請`       | pending 時可接受/拒絕 |
+| `friend_request_accepted` | `friend`   | `{receiverName} 接受了你的好友邀請`      | 無                    |
+| `activity_created`        | `activity` | `{creatorName} 建立了新活動：{activity}` | 無                    |
 
 **LINE 推播**
 

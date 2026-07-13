@@ -1,7 +1,7 @@
-import { PrismaClient } from '@prisma/client'
-import bcrypt from 'bcryptjs'
+import { PrismaClient } from "@prisma/client";
+import bcrypt from "bcryptjs";
 
-const prisma = new PrismaClient()
+const prisma = new PrismaClient();
 
 // ==================================================================
 // Demo 用假資料。設計原則：
@@ -20,72 +20,88 @@ const prisma = new PrismaClient()
 // ==================================================================
 
 async function main() {
-  console.log('🌱 開始種入 demo 假資料...')
+  console.log("🌱 開始種入 demo 假資料...");
 
   // ==================
   // Users
   // ==================
+  const demoUsers = [
+    { name: "alice", bio: null },
+    { name: "bob", bio: "資深電影咖，什麼片都看。" },
+    {
+      name: "carol",
+      bio: "喜歡辦活動，熱愛烤肉與桌遊！週末有空隨時揪我，很高興認識大家。",
+    },
+    { name: "dave", bio: null },
+    { name: "eve", bio: "安靜潛水中..." },
+    { name: "frank", bio: "我是 Frank" },
+    { name: "grace", bio: "我是 Grace" },
+  ];
+
   const [alice, bob, carol, dave, eve, frank, grace] = await Promise.all(
-    ['alice', 'bob', 'carol', 'dave', 'eve', 'frank', 'grace'].map((name) =>
+    demoUsers.map((u) =>
       prisma.user.create({
         data: {
-          display_name: name[0].toUpperCase() + name.slice(1),
-          avatar_url: `https://i.pravatar.cc/150?u=${name}`,
+          display_name: u.name[0].toUpperCase() + u.name.slice(1),
+          avatar_url: `https://i.pravatar.cc/150?u=${u.name}`,
+          bio: u.bio,
         },
       }),
     ),
-  )
+  );
 
-  console.log('✅ Users 建立完成')
+  console.log("✅ Users 建立完成");
 
   // ==================
   // UserIdentities
   // 全部提供 local 帳密（BujoDemo#2026）方便 demo 現場快速切換帳號登入，
   // 另外保留 Alice/Bob/Dave 的 google/line 身份示範多種登入方式。
   // ==================
-  const passwordHash = await bcrypt.hash('BujoDemo#2026', 10)
+  const passwordHash = await bcrypt.hash("BujoDemo#2026", 10);
   const localAccounts = [
-    { user: alice, email: 'alice@gmail.com' },
-    { user: bob, email: 'bob@example.com' },
-    { user: carol, email: 'carol@example.com' },
-    { user: dave, email: 'dave@example.com' },
-    { user: eve, email: 'eve@example.com' },
-    { user: frank, email: 'frank@example.com' },
-    { user: grace, email: 'grace@example.com' },
-  ]
+    { user: alice, email: "alice@gmail.com" },
+    { user: bob, email: "bob@example.com" },
+    { user: carol, email: "carol@example.com" },
+    { user: dave, email: "dave@example.com" },
+    { user: eve, email: "eve@example.com" },
+    { user: frank, email: "frank@example.com" },
+    { user: grace, email: "grace@example.com" },
+  ];
 
   await prisma.userIdentity.createMany({
     data: [
       ...localAccounts.map(({ user, email }) => ({
         user_id: user.id,
-        provider: 'local',
+        provider: "local",
         provider_user_id: email,
         email,
         password_hash: passwordHash,
       })),
       {
         user_id: alice.id,
-        provider: 'google',
-        provider_user_id: 'google_alice_001',
-        email: 'alice@gmail.com',
+        provider: "google",
+        provider_user_id: "google_alice_001",
+        email: "alice@gmail.com",
       },
       {
         user_id: bob.id,
-        provider: 'line',
-        provider_user_id: 'line_bob_002',
-        email: 'bob@line.me',
+        provider: "line",
+        provider_user_id: "line_bob_002",
+        email: "bob@line.me",
       },
       {
         user_id: dave.id,
-        provider: 'google',
-        provider_user_id: 'google_dave_004',
-        email: 'dave@gmail.com',
+        provider: "google",
+        provider_user_id: "google_dave_004",
+        email: "dave@gmail.com",
       },
     ],
-  })
+  });
 
-  console.log('✅ UserIdentities 建立完成')
-  console.log('   所有帳號皆可用 <name>@example.com（Alice 用 alice@gmail.com）+ BujoDemo#2026 登入')
+  console.log("✅ UserIdentities 建立完成");
+  console.log(
+    "   所有帳號皆可用 <name>@example.com（Alice 用 alice@gmail.com）+ BujoDemo#2026 登入",
+  );
 
   // ==================
   // Friendships
@@ -94,18 +110,49 @@ async function main() {
   // Alice -> Frank：pending，示範「已送出邀請，等待對方回覆」畫面
   // Grace -> Alice：rejected，示範歷史拒絕紀錄
   // ==================
-  const [aliceBob, aliceCarol, aliceDave, eveToAlice, aliceToFrank] = await Promise.all([
-    prisma.friendship.create({ data: { requester_id: alice.id, receiver_id: bob.id, status: 'accepted' } }),
-    prisma.friendship.create({ data: { requester_id: alice.id, receiver_id: carol.id, status: 'accepted' } }),
-    prisma.friendship.create({ data: { requester_id: alice.id, receiver_id: dave.id, status: 'accepted' } }),
-    prisma.friendship.create({ data: { requester_id: eve.id, receiver_id: alice.id, status: 'pending' } }),
-    prisma.friendship.create({ data: { requester_id: alice.id, receiver_id: frank.id, status: 'pending' } }),
-  ])
+  const [aliceBob, aliceCarol, aliceDave, eveToAlice, aliceToFrank] =
+    await Promise.all([
+      prisma.friendship.create({
+        data: {
+          requester_id: alice.id,
+          receiver_id: bob.id,
+          status: "accepted",
+        },
+      }),
+      prisma.friendship.create({
+        data: {
+          requester_id: alice.id,
+          receiver_id: carol.id,
+          status: "accepted",
+        },
+      }),
+      prisma.friendship.create({
+        data: {
+          requester_id: alice.id,
+          receiver_id: dave.id,
+          status: "accepted",
+        },
+      }),
+      prisma.friendship.create({
+        data: {
+          requester_id: eve.id,
+          receiver_id: alice.id,
+          status: "pending",
+        },
+      }),
+      prisma.friendship.create({
+        data: {
+          requester_id: alice.id,
+          receiver_id: frank.id,
+          status: "pending",
+        },
+      }),
+    ]);
   await prisma.friendship.create({
-    data: { requester_id: grace.id, receiver_id: alice.id, status: 'rejected' },
-  })
+    data: { requester_id: grace.id, receiver_id: alice.id, status: "rejected" },
+  });
 
-  console.log('✅ Friendships 建立完成')
+  console.log("✅ Friendships 建立完成");
 
   // ==================
   // Activities
@@ -113,40 +160,42 @@ async function main() {
   // voting/tiebreaking/confirmed/cancelled 直接設定最終狀態與資料，
   // 不依賴 lazy 狀態轉換（該轉換只在 GET 單一活動、且原狀態為 recruiting 時觸發）。
   // ==================
-  const now = new Date()
+  const now = new Date();
   const at = (days, hour = 14) => {
-    const d = new Date(now)
-    d.setDate(d.getDate() + days)
-    d.setHours(hour, 0, 0, 0)
-    return d
-  }
+    const d = new Date(now);
+    d.setDate(d.getDate() + days);
+    d.setHours(hour, 0, 0, 0);
+    return d;
+  };
 
   // 1. recruiting：Alice 建立，Bob 已加入，名額未滿 → demo 現場可示範加入流程
   await prisma.activity.create({
     data: {
       creator_id: alice.id,
-      title: 'Alice 的烤肉趴',
-      description: '自備食材，飲料共享！歡迎揪人來。',
-      location: '大安森林公園',
+      title: "Alice 的烤肉趴",
+      description: "自備食材，飲料共享！歡迎揪人來。",
+      location: "大安森林公園",
       participant_target: 6,
-      status: 'recruiting',
+      status: "recruiting",
       schedule: { create: { requires_voting: false, deadline_at: at(3, 17) } },
-      candidateSlots: { create: { slot_start: at(4, 17), slot_end: at(4, 21) } },
+      candidateSlots: {
+        create: { slot_start: at(4, 17), slot_end: at(4, 21) },
+      },
       participants: { create: [{ user_id: alice.id }, { user_id: bob.id }] },
-      chat: { create: { name: 'Alice 的烤肉趴' } },
+      chat: { create: { name: "Alice 的烤肉趴" } },
     },
-  })
+  });
 
   // 2. voting：Alice 建立，3 個候選時段，Bob/Carol 投第一個、Dave 投第二個
   //    → slot1 領先但非全數一致，demo 現場可示範 Alice 投票、創建者確認成團
   const votingActivity = await prisma.activity.create({
     data: {
       creator_id: alice.id,
-      title: 'Alice 的爬山',
-      description: '輕鬆路線，新手也可以！候選時段投票中。',
-      location: '象山步道',
+      title: "Alice 的爬山",
+      description: "輕鬆路線，新手也可以！候選時段投票中。",
+      location: "象山步道",
       participant_target: 10,
-      status: 'voting',
+      status: "voting",
       schedule: { create: { requires_voting: true, deadline_at: at(-1, 8) } },
       candidateSlots: {
         create: [
@@ -156,31 +205,37 @@ async function main() {
         ],
       },
       participants: {
-        create: [{ user_id: alice.id }, { user_id: bob.id }, { user_id: carol.id }, { user_id: dave.id }],
+        create: [
+          { user_id: alice.id },
+          { user_id: bob.id },
+          { user_id: carol.id },
+          { user_id: dave.id },
+        ],
       },
-      chat: { create: { name: 'Alice 的爬山' } },
+      chat: { create: { name: "Alice 的爬山" } },
     },
-    include: { candidateSlots: { orderBy: { slot_start: 'asc' } } },
-  })
-  const [votingSlot1, votingSlot2] = votingActivity.candidateSlots
+    include: { candidateSlots: { orderBy: { slot_start: "asc" } } },
+  });
+  const [votingSlot1, votingSlot2] = votingActivity.candidateSlots;
   await prisma.activityAvailability.createMany({
     data: [
       { candidate_slot_id: votingSlot1.id, user_id: bob.id },
       { candidate_slot_id: votingSlot1.id, user_id: carol.id },
       { candidate_slot_id: votingSlot2.id, user_id: dave.id },
     ],
-  })
+  });
 
   // 3. tiebreaking：Alice 建立，2 個候選時段打平（Bob / Carol 各投一邊），
   //    已進入決選投票階段，Bob 已投決選票 → demo 現場可示範 Alice 投決選票、確認成團
   const tiebreakActivity = await prisma.activity.create({
     data: {
       creator_id: alice.id,
-      title: 'Alice 的桌遊之夜',
-      description: '卡坦島、密室逃脫等，歡迎帶自己喜歡的遊戲！時段打平，進入決選。',
-      location: '信義區桌遊店',
+      title: "Alice 的桌遊之夜",
+      description:
+        "卡坦島、密室逃脫等，歡迎帶自己喜歡的遊戲！時段打平，進入決選。",
+      location: "信義區桌遊店",
       participant_target: 6,
-      status: 'tiebreaking',
+      status: "tiebreaking",
       schedule: { create: { requires_voting: true, deadline_at: at(-1, 19) } },
       candidateSlots: {
         create: [
@@ -189,61 +244,75 @@ async function main() {
         ],
       },
       participants: {
-        create: [{ user_id: alice.id }, { user_id: bob.id }, { user_id: carol.id }],
+        create: [
+          { user_id: alice.id },
+          { user_id: bob.id },
+          { user_id: carol.id },
+        ],
       },
-      chat: { create: { name: 'Alice 的桌遊之夜' } },
+      chat: { create: { name: "Alice 的桌遊之夜" } },
     },
-    include: { candidateSlots: { orderBy: { slot_start: 'asc' } } },
-  })
-  const [tiebreakSlotA, tiebreakSlotB] = tiebreakActivity.candidateSlots
+    include: { candidateSlots: { orderBy: { slot_start: "asc" } } },
+  });
+  const [tiebreakSlotA, tiebreakSlotB] = tiebreakActivity.candidateSlots;
   await prisma.activityAvailability.createMany({
     data: [
       { candidate_slot_id: tiebreakSlotA.id, user_id: bob.id },
       { candidate_slot_id: tiebreakSlotB.id, user_id: carol.id },
     ],
-  })
+  });
   await prisma.activityTiebreakVote.create({
-    data: { activity_id: tiebreakActivity.id, candidate_slot_id: tiebreakSlotA.id, user_id: bob.id },
-  })
+    data: {
+      activity_id: tiebreakActivity.id,
+      candidate_slot_id: tiebreakSlotA.id,
+      user_id: bob.id,
+    },
+  });
 
   // 4. confirmed：Bob 建立，Alice 已加入且已成團 → 示範已成團畫面
   const confirmedActivity = await prisma.activity.create({
     data: {
       creator_id: bob.id,
-      title: 'Bob 的看電影',
-      description: '約好要去看的那部！',
-      location: '西門町某電影院',
+      title: "Bob 的看電影",
+      description: "約好要去看的那部！",
+      location: "西門町某電影院",
       participant_target: 4,
-      status: 'confirmed',
+      status: "confirmed",
       schedule: { create: { requires_voting: false, deadline_at: at(9, 20) } },
-      candidateSlots: { create: { slot_start: at(10, 20), slot_end: at(10, 22) } },
+      candidateSlots: {
+        create: { slot_start: at(10, 20), slot_end: at(10, 22) },
+      },
       participants: { create: [{ user_id: bob.id }, { user_id: alice.id }] },
-      chat: { create: { name: 'Bob 的看電影' } },
+      chat: { create: { name: "Bob 的看電影" } },
     },
     include: { candidateSlots: true },
-  })
+  });
   await prisma.activitySchedule.update({
     where: { activity_id: confirmedActivity.id },
     data: { confirmed_slot_id: confirmedActivity.candidateSlots[0].id },
-  })
+  });
 
   // 5. cancelled：Carol 建立，Alice 曾加入，最後流團 → 示範取消畫面
   const cancelledActivity = await prisma.activity.create({
     data: {
       creator_id: carol.id,
-      title: 'Carol 的下午茶',
-      description: '來聊聊最近在幹嘛，輕鬆聚聚。',
-      location: '大安區某咖啡廳',
+      title: "Carol 的下午茶",
+      description: "來聊聊最近在幹嘛，輕鬆聚聚。",
+      location: "大安區某咖啡廳",
       participant_target: 5,
-      status: 'cancelled',
+      status: "cancelled",
       schedule: { create: { requires_voting: false, deadline_at: at(-2, 15) } },
-      candidateSlots: { create: { slot_start: at(-1, 15), slot_end: at(-1, 17) } },
+      candidateSlots: {
+        create: { slot_start: at(-1, 15), slot_end: at(-1, 17) },
+      },
       participants: { create: [{ user_id: carol.id }, { user_id: alice.id }] },
-      chat: { create: { name: 'Carol 的下午茶' } },
+      chat: { create: { name: "Carol 的下午茶" } },
     },
-  })
+  });
 
-  console.log('✅ Activities 建立完成（recruiting / voting / tiebreaking / confirmed / cancelled 皆已涵蓋）')
+  console.log(
+    "✅ Activities 建立完成（recruiting / voting / tiebreaking / confirmed / cancelled 皆已涵蓋）",
+  );
 
   // ==================
   // 行事曆歷史示範活動
@@ -259,100 +328,136 @@ async function main() {
   await prisma.activity.create({
     data: {
       creator_id: carol.id,
-      title: 'KTV',
-      location: '西門町錢櫃',
+      title: "KTV",
+      location: "西門町錢櫃",
       participant_target: 6,
-      status: 'recruiting',
-      schedule: { create: { requires_voting: false, deadline_at: at(-39, 18) } },
-      candidateSlots: { create: { slot_start: at(-38, 19), slot_end: at(-38, 23) } },
-      participants: { create: [{ user_id: carol.id }, { user_id: alice.id }, { user_id: bob.id }] },
-      chat: { create: { name: 'KTV' } },
+      status: "recruiting",
+      schedule: {
+        create: { requires_voting: false, deadline_at: at(-39, 18) },
+      },
+      candidateSlots: {
+        create: { slot_start: at(-38, 19), slot_end: at(-38, 23) },
+      },
+      participants: {
+        create: [
+          { user_id: carol.id },
+          { user_id: alice.id },
+          { user_id: bob.id },
+        ],
+      },
+      chat: { create: { name: "KTV" } },
     },
-  })
+  });
 
   await prisma.activity.create({
     data: {
       creator_id: alice.id,
-      title: '小酌',
-      location: '公館某居酒屋',
+      title: "小酌",
+      location: "公館某居酒屋",
       participant_target: 4,
-      status: 'recruiting',
-      schedule: { create: { requires_voting: false, deadline_at: at(-37, 20) } },
-      candidateSlots: { create: { slot_start: at(-36, 21), slot_end: at(-36, 23) } },
+      status: "recruiting",
+      schedule: {
+        create: { requires_voting: false, deadline_at: at(-37, 20) },
+      },
+      candidateSlots: {
+        create: { slot_start: at(-36, 21), slot_end: at(-36, 23) },
+      },
       participants: { create: [{ user_id: alice.id }] },
-      chat: { create: { name: '小酌' } },
+      chat: { create: { name: "小酌" } },
     },
-  })
+  });
 
   const dinnerActivity = await prisma.activity.create({
     data: {
       creator_id: dave.id,
-      title: '晚餐',
-      location: '公館某餐酒館',
+      title: "晚餐",
+      location: "公館某餐酒館",
       participant_target: 4,
-      status: 'confirmed',
-      schedule: { create: { requires_voting: false, deadline_at: at(-36, 18) } },
-      candidateSlots: { create: { slot_start: at(-35, 18), slot_end: at(-35, 20) } },
+      status: "confirmed",
+      schedule: {
+        create: { requires_voting: false, deadline_at: at(-36, 18) },
+      },
+      candidateSlots: {
+        create: { slot_start: at(-35, 18), slot_end: at(-35, 20) },
+      },
       participants: { create: [{ user_id: dave.id }, { user_id: alice.id }] },
-      chat: { create: { name: '晚餐' } },
+      chat: { create: { name: "晚餐" } },
     },
     include: { candidateSlots: true },
-  })
+  });
   await prisma.activitySchedule.update({
     where: { activity_id: dinnerActivity.id },
     data: { confirmed_slot_id: dinnerActivity.candidateSlots[0].id },
-  })
+  });
 
   await prisma.activity.create({
     data: {
       creator_id: bob.id,
-      title: '爬山',
-      location: '象山步道',
+      title: "爬山",
+      location: "象山步道",
       participant_target: 8,
-      status: 'recruiting',
-      schedule: { create: { requires_voting: false, deadline_at: at(-31, 20) } },
-      candidateSlots: { create: { slot_start: at(-30, 6), slot_end: at(-30, 14) } },
+      status: "recruiting",
+      schedule: {
+        create: { requires_voting: false, deadline_at: at(-31, 20) },
+      },
+      candidateSlots: {
+        create: { slot_start: at(-30, 6), slot_end: at(-30, 14) },
+      },
       participants: { create: [{ user_id: bob.id }, { user_id: alice.id }] },
-      chat: { create: { name: '爬山' } },
+      chat: { create: { name: "爬山" } },
     },
-  })
+  });
 
   await prisma.activity.create({
     data: {
       creator_id: carol.id,
-      title: '桌遊',
-      location: '信義區桌遊店',
+      title: "桌遊",
+      location: "信義區桌遊店",
       participant_target: 6,
-      status: 'recruiting',
-      schedule: { create: { requires_voting: false, deadline_at: at(-29, 19) } },
-      candidateSlots: { create: { slot_start: at(-28, 19), slot_end: at(-28, 22) } },
+      status: "recruiting",
+      schedule: {
+        create: { requires_voting: false, deadline_at: at(-29, 19) },
+      },
+      candidateSlots: {
+        create: { slot_start: at(-28, 19), slot_end: at(-28, 22) },
+      },
       participants: { create: [{ user_id: carol.id }] },
-      chat: { create: { name: '桌遊' } },
+      chat: { create: { name: "桌遊" } },
     },
-  })
+  });
 
   const singingActivity = await prisma.activity.create({
     data: {
       creator_id: alice.id,
-      title: '歌唱',
-      location: 'K award 練歌房',
+      title: "歌唱",
+      location: "K award 練歌房",
       participant_target: 6,
-      status: 'confirmed',
-      schedule: { create: { requires_voting: false, deadline_at: at(-23, 18) } },
-      candidateSlots: { create: { slot_start: at(-22, 19), slot_end: at(-22, 22) } },
-      participants: {
-        create: [{ user_id: alice.id }, { user_id: bob.id }, { user_id: carol.id }],
+      status: "confirmed",
+      schedule: {
+        create: { requires_voting: false, deadline_at: at(-23, 18) },
       },
-      chat: { create: { name: '歌唱' } },
+      candidateSlots: {
+        create: { slot_start: at(-22, 19), slot_end: at(-22, 22) },
+      },
+      participants: {
+        create: [
+          { user_id: alice.id },
+          { user_id: bob.id },
+          { user_id: carol.id },
+        ],
+      },
+      chat: { create: { name: "歌唱" } },
     },
     include: { candidateSlots: true },
-  })
+  });
   await prisma.activitySchedule.update({
     where: { activity_id: singingActivity.id },
     data: { confirmed_slot_id: singingActivity.candidateSlots[0].id },
-  })
+  });
 
-  console.log('✅ 行事曆歷史示範活動建立完成（KTV / 小酌 / 晚餐 / 爬山 / 桌遊 / 歌唱）')
+  console.log(
+    "✅ 行事曆歷史示範活動建立完成（KTV / 小酌 / 晚餐 / 爬山 / 桌遊 / 歌唱）",
+  );
 
   // ==================
   // Notifications
@@ -370,49 +475,171 @@ async function main() {
   await prisma.notification.createMany({
     data: [
       // --- 好友邀請歷史（friend_request_created 只發給接收方）---
-      { user_id: bob.id, type: 'friend_request_created', reference_id: aliceBob.id, reference_type: 'friendship', is_read: true },
-      { user_id: carol.id, type: 'friend_request_created', reference_id: aliceCarol.id, reference_type: 'friendship', is_read: true },
-      { user_id: dave.id, type: 'friend_request_created', reference_id: aliceDave.id, reference_type: 'friendship', is_read: true },
-      { user_id: frank.id, type: 'friend_request_created', reference_id: aliceToFrank.id, reference_type: 'friendship', is_read: false },
-      { user_id: alice.id, type: 'friend_request_created', reference_id: eveToAlice.id, reference_type: 'friendship', is_read: false },
+      {
+        user_id: bob.id,
+        type: "friend_request_created",
+        reference_id: aliceBob.id,
+        reference_type: "friendship",
+        is_read: true,
+      },
+      {
+        user_id: carol.id,
+        type: "friend_request_created",
+        reference_id: aliceCarol.id,
+        reference_type: "friendship",
+        is_read: true,
+      },
+      {
+        user_id: dave.id,
+        type: "friend_request_created",
+        reference_id: aliceDave.id,
+        reference_type: "friendship",
+        is_read: true,
+      },
+      {
+        user_id: frank.id,
+        type: "friend_request_created",
+        reference_id: aliceToFrank.id,
+        reference_type: "friendship",
+        is_read: false,
+      },
+      {
+        user_id: alice.id,
+        type: "friend_request_created",
+        reference_id: eveToAlice.id,
+        reference_type: "friendship",
+        is_read: false,
+      },
 
       // --- 好友邀請被接受（friend_request_accepted 發給原邀請方 Alice）---
-      { user_id: alice.id, type: 'friend_request_accepted', reference_id: aliceBob.id, reference_type: 'friendship', is_read: true },
-      { user_id: alice.id, type: 'friend_request_accepted', reference_id: aliceDave.id, reference_type: 'friendship', is_read: true },
+      {
+        user_id: alice.id,
+        type: "friend_request_accepted",
+        reference_id: aliceBob.id,
+        reference_type: "friendship",
+        is_read: true,
+      },
+      {
+        user_id: alice.id,
+        type: "friend_request_accepted",
+        reference_id: aliceDave.id,
+        reference_type: "friendship",
+        is_read: true,
+      },
 
       // --- 活動建立通知（activity_created 發給建立者的好友）---
-      { user_id: bob.id, type: 'activity_created', reference_id: votingActivity.id, reference_type: 'activity', is_read: true },
-      { user_id: carol.id, type: 'activity_created', reference_id: votingActivity.id, reference_type: 'activity', is_read: true },
-      { user_id: dave.id, type: 'activity_created', reference_id: votingActivity.id, reference_type: 'activity', is_read: true },
-      { user_id: bob.id, type: 'activity_created', reference_id: tiebreakActivity.id, reference_type: 'activity', is_read: false },
-      { user_id: carol.id, type: 'activity_created', reference_id: tiebreakActivity.id, reference_type: 'activity', is_read: false },
-      { user_id: alice.id, type: 'activity_created', reference_id: confirmedActivity.id, reference_type: 'activity', is_read: true },
-      { user_id: alice.id, type: 'activity_created', reference_id: cancelledActivity.id, reference_type: 'activity', is_read: true },
+      {
+        user_id: bob.id,
+        type: "activity_created",
+        reference_id: votingActivity.id,
+        reference_type: "activity",
+        is_read: true,
+      },
+      {
+        user_id: carol.id,
+        type: "activity_created",
+        reference_id: votingActivity.id,
+        reference_type: "activity",
+        is_read: true,
+      },
+      {
+        user_id: dave.id,
+        type: "activity_created",
+        reference_id: votingActivity.id,
+        reference_type: "activity",
+        is_read: true,
+      },
+      {
+        user_id: bob.id,
+        type: "activity_created",
+        reference_id: tiebreakActivity.id,
+        reference_type: "activity",
+        is_read: false,
+      },
+      {
+        user_id: carol.id,
+        type: "activity_created",
+        reference_id: tiebreakActivity.id,
+        reference_type: "activity",
+        is_read: false,
+      },
+      {
+        user_id: alice.id,
+        type: "activity_created",
+        reference_id: confirmedActivity.id,
+        reference_type: "activity",
+        is_read: true,
+      },
+      {
+        user_id: alice.id,
+        type: "activity_created",
+        reference_id: cancelledActivity.id,
+        reference_type: "activity",
+        is_read: true,
+      },
 
       // --- 活動狀態變化通知（demo 示範用，未讀）---
-      { user_id: alice.id, type: 'time_to_pick', reference_id: votingActivity.id, reference_type: 'activity', is_read: false },
-      { user_id: bob.id, type: 'tiebreak_started', reference_id: tiebreakActivity.id, reference_type: 'activity', is_read: false },
-      { user_id: carol.id, type: 'tiebreak_started', reference_id: tiebreakActivity.id, reference_type: 'activity', is_read: false },
-      { user_id: alice.id, type: 'activity_confirmed', reference_id: confirmedActivity.id, reference_type: 'activity', is_read: false },
-      { user_id: bob.id, type: 'activity_confirmed', reference_id: confirmedActivity.id, reference_type: 'activity', is_read: true },
-      { user_id: alice.id, type: 'activity_cancelled', reference_id: cancelledActivity.id, reference_type: 'activity', is_read: false },
+      {
+        user_id: alice.id,
+        type: "time_to_pick",
+        reference_id: votingActivity.id,
+        reference_type: "activity",
+        is_read: false,
+      },
+      {
+        user_id: bob.id,
+        type: "tiebreak_started",
+        reference_id: tiebreakActivity.id,
+        reference_type: "activity",
+        is_read: false,
+      },
+      {
+        user_id: carol.id,
+        type: "tiebreak_started",
+        reference_id: tiebreakActivity.id,
+        reference_type: "activity",
+        is_read: false,
+      },
+      {
+        user_id: alice.id,
+        type: "activity_confirmed",
+        reference_id: confirmedActivity.id,
+        reference_type: "activity",
+        is_read: false,
+      },
+      {
+        user_id: bob.id,
+        type: "activity_confirmed",
+        reference_id: confirmedActivity.id,
+        reference_type: "activity",
+        is_read: true,
+      },
+      {
+        user_id: alice.id,
+        type: "activity_cancelled",
+        reference_id: cancelledActivity.id,
+        reference_type: "activity",
+        is_read: false,
+      },
     ],
-  })
+  });
 
-  console.log('✅ Notifications 建立完成')
-  console.log('')
-  console.log('🎉 Demo 假資料種入完成！')
-  console.log('')
-  console.log('登入帳號（密碼統一：BujoDemo#2026）：')
-  console.log('  alice@gmail.com   → demo 主帳號，可示範所有功能')
-  console.log('  bob/carol/dave/eve/frank/grace@example.com → 配角帳號，可切換視角查看')
+  console.log("✅ Notifications 建立完成");
+  console.log("");
+  console.log("🎉 Demo 假資料種入完成！");
+  console.log("");
+  console.log("登入帳號（密碼統一：BujoDemo#2026）：");
+  console.log("  alice@gmail.com   → demo 主帳號，可示範所有功能");
+  console.log(
+    "  bob/carol/dave/eve/frank/grace@example.com → 配角帳號，可切換視角查看",
+  );
 }
 
 main()
   .catch((e) => {
-    console.error(e)
-    process.exit(1)
+    console.error(e);
+    process.exit(1);
   })
   .finally(async () => {
-    await prisma.$disconnect()
-  })
+    await prisma.$disconnect();
+  });
