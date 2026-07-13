@@ -249,7 +249,7 @@ describe('joinActivity - 情境二 range 模式報名', () => {
 
     expect(prisma.activity.update).toHaveBeenCalledWith({ where: { id: ACTIVITY_ID }, data: { status: 'voting' } })
     expect(prisma.notification.create).toHaveBeenCalledWith({
-      data: { user_id: CREATOR_ID, type: 'time_to_pick', reference_id: ACTIVITY_ID, reference_type: 'activity' },
+      data: { user_id: CREATOR_ID, type: 'formation_ready', reference_id: ACTIVITY_ID, reference_type: 'activity' },
     })
     expect(res.json).toHaveBeenCalledWith({ message: '報名成功' })
   })

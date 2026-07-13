@@ -1,5 +1,9 @@
 import prisma from '../lib/prisma.js'
-import { notifyFriendsActivityCreated } from '../services/notificationService.js'
+import {
+  NOTIFICATION_TYPES,
+  notifyFriendsActivityCreated,
+  sendActivityLifecycleLineNotifications,
+} from '../services/notificationService.js'
 
 // 情境 a（日期時間都固定，單一候選時段、免投票）、情境 b（日期固定、候選時段複選投票）、
 // 情境 c（候選日期複選、統一時間）、情境 d（候選日期各自不同時段）皆已支援，皆含到期判定。
@@ -276,6 +280,20 @@ export async function getActivity(req, res) {
 
       if (won) {
         currentStatus = nextStatus
+        // LINE 推播只在交易 commit 後發送；樂觀鎖敗者走 else 分支自然不推播
+        if (nextStatus === 'voting') {
+          await sendActivityLifecycleLineNotifications({
+            userIds: [activity.creator_id],
+            activityId: id,
+            type: NOTIFICATION_TYPES.TIME_TO_PICK,
+          })
+        } else {
+          await sendActivityLifecycleLineNotifications({
+            userIds: activity.participants.map((p) => p.user_id),
+            activityId: id,
+            type: NOTIFICATION_TYPES.ACTIVITY_CANCELLED,
+          })
+        }
       } else {
         // 沒搶到：代表另一個併發請求已經完成轉換，重新讀取最新狀態避免回傳過期資料
         const fresh = await prisma.activity.findUnique({
@@ -313,6 +331,11 @@ export async function getActivity(req, res) {
 
       if (won) {
         currentStatus = 'cancelled'
+        await sendActivityLifecycleLineNotifications({
+          userIds: activity.participants.map((p) => p.user_id),
+          activityId: id,
+          type: NOTIFICATION_TYPES.ACTIVITY_CANCELLED,
+        })
       } else {
         const fresh = await prisma.activity.findUnique({
           where: { id },
@@ -485,6 +508,8 @@ export async function joinActivity(req, res) {
   const { candidateSlotIds, ranges, candidateSlotRanges } = req.body
 
   try {
+    // 達標時記下建立者，交易 commit 後才發 LINE 推播（不在交易內做外部 HTTP）
+    let formationReadyCreatorId = null
     const outcome = await prisma.$transaction(async (tx) => {
       // 先鎖住這筆活動的 row，讓同一活動的併發報名請求依序處理，
       // 避免兩個請求同時讀到「還有名額」而一起插入，導致人數超過 participant_target
@@ -630,8 +655,9 @@ export async function joinActivity(req, res) {
       if (targetReached) {
         await tx.activity.update({ where: { id }, data: { status: 'voting' } })
         await tx.notification.create({
-          data: { user_id: activity.creator_id, type: 'time_to_pick', reference_id: id, reference_type: 'activity' },
+          data: { user_id: activity.creator_id, type: NOTIFICATION_TYPES.FORMATION_READY, reference_id: id, reference_type: 'activity' },
         })
+        formationReadyCreatorId = activity.creator_id
       }
 
       return null
@@ -639,6 +665,13 @@ export async function joinActivity(req, res) {
 
     if (outcome) {
       return res.status(outcome.status).json({ message: outcome.message })
+    }
+    if (formationReadyCreatorId) {
+      await sendActivityLifecycleLineNotifications({
+        userIds: [formationReadyCreatorId],
+        activityId: id,
+        type: NOTIFICATION_TYPES.FORMATION_READY,
+      })
     }
     return res.json({ message: '報名成功' })
   } catch (error) {
@@ -784,6 +817,12 @@ export async function confirmFormation(req, res) {
       return res.status(409).json({ message: '此活動狀態已被異動，請重新整理後再試' })
     }
 
+    await sendActivityLifecycleLineNotifications({
+      userIds: notifyTargets.map((p) => p.user_id),
+      activityId: id,
+      type: NOTIFICATION_TYPES.ACTIVITY_CONFIRMED,
+    })
+
     return res.json({ message: '成團成功' })
   } catch (error) {
     console.error('confirmFormation 錯誤：', error)
@@ -835,6 +874,12 @@ export async function cancelActivity(req, res) {
     if (!won) {
       return res.status(409).json({ message: '此活動狀態已被異動，請重新整理後再試' })
     }
+
+    await sendActivityLifecycleLineNotifications({
+      userIds: notifyTargets.map((p) => p.user_id),
+      activityId: id,
+      type: NOTIFICATION_TYPES.ACTIVITY_CANCELLED,
+    })
 
     return res.json({ message: '活動已取消' })
   } catch (error) {

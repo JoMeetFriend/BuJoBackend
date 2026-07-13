@@ -249,6 +249,38 @@ export async function notifyFriendsActivityCreated(
   return result;
 }
 
+export async function sendActivityLifecycleLineNotifications(
+  { userIds, activityId, type },
+  db = prisma,
+) {
+  if (!activityId) {
+    throw new Error("activityId is required");
+  }
+
+  if (!type) {
+    throw new Error("type is required");
+  }
+
+  if (!userIds || userIds.length === 0) {
+    return [];
+  }
+
+  let lineTextPromise = null;
+  const getLineText = () => {
+    if (!lineTextPromise) {
+      lineTextPromise = buildActivityLineMessage({ activityId, type }, db);
+    }
+
+    return lineTextPromise;
+  };
+
+  return Promise.all(
+    userIds.map((userId) =>
+      deliverLineNotification({ userId, type, getText: getLineText }, db),
+    ),
+  );
+}
+
 export async function listUserNotifications({ userId }, db = prisma) {
   if (!userId) {
     throw new Error("userId is required");
@@ -496,7 +528,7 @@ function buildActivityMessage(type, { creatorName, activityTitle }) {
   }
 }
 
-async function buildActivityLineMessage({ activityId }, db) {
+export async function buildActivityLineMessage({ activityId, type }, db = prisma) {
   const activity = db.activity?.findUnique
     ? await db.activity.findUnique({
         where: { id: activityId },
@@ -511,7 +543,7 @@ async function buildActivityLineMessage({ activityId }, db) {
   const creatorName = activity?.creator?.display_name || "有人";
   const activityTitle = activity?.title || "新活動";
 
-  return `${creatorName} 建立了新活動：${activityTitle}`;
+  return buildActivityMessage(type, { creatorName, activityTitle });
 }
 
 async function deliverLineNotification({ userId, type, getText }, db) {

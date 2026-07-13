@@ -16,12 +16,18 @@ jest.unstable_mockModule('../lib/prisma.js', () => {
     activityCandidateSlot: { create: jest.fn() },
     friendship: { findMany: jest.fn(() => Promise.resolve([])) },
     notification: { create: jest.fn(), createMany: jest.fn() },
+    userIdentity: { findFirst: jest.fn() },
+    notificationPreference: { findUnique: jest.fn() },
     $queryRaw: jest.fn(() => Promise.resolve([])),
     $transaction: jest.fn((arg) => (Array.isArray(arg) ? Promise.all(arg) : arg(prisma))),
   }
 
   return { default: prisma }
 })
+
+jest.unstable_mockModule('../services/lineMessagingService.js', () => ({
+  sendLinePushMessage: jest.fn(() => Promise.resolve({ status: 'sent' })),
+}))
 
 const {
   createActivity,
@@ -33,6 +39,7 @@ const {
   cancelJoin,
 } = await import('../controllers/activityController.js')
 const { default: prisma } = await import('../lib/prisma.js')
+const { sendLinePushMessage } = await import('../services/lineMessagingService.js')
 
 const CREATOR_ID = 'creator-1'
 const PARTICIPANT_ID = 'participant-1'
@@ -830,7 +837,7 @@ describe('joinActivity - 報名後人數達標，通知建立者，但不自動�
     expect(prisma.activity.update).toHaveBeenCalledWith({ where: { id: ACTIVITY_ID }, data: { status: 'voting' } })
     expect(prisma.activitySchedule.update).not.toHaveBeenCalled()
     expect(prisma.notification.create).toHaveBeenCalledWith({
-      data: { user_id: CREATOR_ID, type: 'time_to_pick', reference_id: ACTIVITY_ID, reference_type: 'activity' },
+      data: { user_id: CREATOR_ID, type: 'formation_ready', reference_id: ACTIVITY_ID, reference_type: 'activity' },
     })
     expect(res.json).toHaveBeenCalledWith({ message: '報名成功' })
   })
@@ -855,7 +862,7 @@ describe('joinActivity - 報名後人數達標，通知建立者，但不自動�
     expect(prisma.activity.update).toHaveBeenCalledWith({ where: { id: ACTIVITY_ID }, data: { status: 'voting' } })
     expect(prisma.activitySchedule.update).not.toHaveBeenCalled()
     expect(prisma.notification.create).toHaveBeenCalledWith({
-      data: { user_id: CREATOR_ID, type: 'time_to_pick', reference_id: ACTIVITY_ID, reference_type: 'activity' },
+      data: { user_id: CREATOR_ID, type: 'formation_ready', reference_id: ACTIVITY_ID, reference_type: 'activity' },
     })
   })
 
@@ -911,7 +918,7 @@ describe('joinActivity - 報名後人數達標，通知建立者，但不自動�
     expect(prisma.activity.update).toHaveBeenCalledWith({ where: { id: ACTIVITY_ID }, data: { status: 'voting' } })
     expect(prisma.activitySchedule.update).not.toHaveBeenCalled()
     expect(prisma.notification.create).toHaveBeenCalledWith({
-      data: { user_id: CREATOR_ID, type: 'time_to_pick', reference_id: ACTIVITY_ID, reference_type: 'activity' },
+      data: { user_id: CREATOR_ID, type: 'formation_ready', reference_id: ACTIVITY_ID, reference_type: 'activity' },
     })
   })
 
@@ -2376,5 +2383,212 @@ describe('listActivities - formatCard 的 date_iso 只在已成團時才給值�
     expect(res.json).toHaveBeenCalledWith({
       activities: [expect.objectContaining({ status: 'confirmed', date_iso: '2026-08-01' })],
     })
+  })
+})
+
+describe('lazy 狀態轉換的 LINE 推播（LINE push delivery for activity lifecycle notifications）', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    prisma.$queryRaw.mockResolvedValue([])
+    prisma.friendship.findMany.mockResolvedValue([])
+    prisma.activity.updateMany.mockResolvedValue({ count: 1 })
+    prisma.notificationPreference.findUnique.mockResolvedValue(null)
+    sendLinePushMessage.mockResolvedValue({ status: 'sent' })
+  })
+
+  it('招募截止轉入 voting 後對建立者推播 time_to_pick 文案', async () => {
+    const activity = makeActivity({
+      schedule: { requires_voting: true, vote_deadline_at: new Date('2020-01-01T00:00:00Z'), confirmedSlot: null },
+    })
+    prisma.activity.findUnique.mockResolvedValue(activity)
+    prisma.userIdentity.findFirst.mockResolvedValue({ provider_user_id: 'U-line-creator' })
+    const res = makeRes()
+
+    await getActivity(makeReq(), res)
+
+    expect(sendLinePushMessage).toHaveBeenCalledTimes(1)
+    expect(sendLinePushMessage).toHaveBeenCalledWith({
+      to: 'U-line-creator',
+      text: '「揪團活動」候選時段票數不相上下，請選擇最終時段',
+    })
+  })
+
+  it('招募截止未達標轉 cancelled 後對全體參與者推播 activity_cancelled 文案', async () => {
+    const activity = makeActivity({
+      participant_target: 3,
+      participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)],
+      schedule: { requires_voting: false, vote_deadline_at: new Date('2020-01-01T00:00:00Z'), confirmedSlot: null },
+    })
+    prisma.activity.findUnique.mockResolvedValue(activity)
+    prisma.userIdentity.findFirst
+      .mockResolvedValueOnce({ provider_user_id: 'U-line-creator' })
+      .mockResolvedValueOnce({ provider_user_id: 'U-line-participant' })
+    const res = makeRes()
+
+    await getActivity(makeReq(), res)
+
+    expect(sendLinePushMessage).toHaveBeenCalledTimes(2)
+    expect(sendLinePushMessage).toHaveBeenNthCalledWith(1, {
+      to: 'U-line-creator',
+      text: '「揪團活動」已取消',
+    })
+    expect(sendLinePushMessage).toHaveBeenNthCalledWith(2, {
+      to: 'U-line-participant',
+      text: '「揪團活動」已取消',
+    })
+  })
+
+  it('決策期逾期自動取消後對全體參與者推播 activity_cancelled 文案', async () => {
+    const activity = makeActivity({
+      status: 'voting',
+      participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)],
+      schedule: { requires_voting: true, deadline_at: new Date('2020-01-01T00:00:00Z'), confirmedSlot: null },
+    })
+    prisma.activity.findUnique.mockResolvedValue(activity)
+    prisma.userIdentity.findFirst
+      .mockResolvedValueOnce({ provider_user_id: 'U-line-creator' })
+      .mockResolvedValueOnce({ provider_user_id: 'U-line-participant' })
+    const res = makeRes()
+
+    await getActivity(makeReq(), res)
+
+    expect(sendLinePushMessage).toHaveBeenCalledTimes(2)
+    expect(sendLinePushMessage).toHaveBeenNthCalledWith(1, {
+      to: 'U-line-creator',
+      text: '「揪團活動」已取消',
+    })
+    expect(sendLinePushMessage).toHaveBeenNthCalledWith(2, {
+      to: 'U-line-participant',
+      text: '「揪團活動」已取消',
+    })
+  })
+
+  it('樂觀鎖敗者（另一請求已完成轉換）不推播', async () => {
+    const activity = makeActivity({
+      participant_target: 3,
+      participants: [makeParticipant(CREATOR_ID)],
+      schedule: { requires_voting: false, vote_deadline_at: new Date('2020-01-01T00:00:00Z'), confirmedSlot: null },
+    })
+    prisma.activity.findUnique
+      .mockResolvedValueOnce(activity)
+      .mockResolvedValueOnce({ status: 'cancelled', schedule: { confirmedSlot: null } })
+    prisma.activity.updateMany.mockResolvedValueOnce({ count: 0 })
+    prisma.userIdentity.findFirst.mockResolvedValue({ provider_user_id: 'U-line-creator' })
+    const res = makeRes()
+
+    await getActivity(makeReq(), res)
+
+    expect(sendLinePushMessage).not.toHaveBeenCalled()
+  })
+})
+
+describe('joinActivity／confirmFormation／cancelActivity 的 LINE 推播接線', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+    prisma.$queryRaw.mockResolvedValue([])
+    prisma.friendship.findMany.mockResolvedValue([])
+    prisma.activity.updateMany.mockResolvedValue({ count: 1 })
+    prisma.notificationPreference.findUnique.mockResolvedValue(null)
+    sendLinePushMessage.mockResolvedValue({ status: 'sent' })
+  })
+
+  it('報名達標後對建立者推播 formation_ready 文案，且仍回報名成功', async () => {
+    prisma.activity.findUnique.mockResolvedValue(
+      makeActivity({
+        status: 'recruiting',
+        participant_target: 2,
+        participants: [makeParticipant(CREATOR_ID)],
+        candidateSlots: [makeSlot('slot-1')],
+        schedule: { requires_voting: false, deadline_at: new Date('2099-01-01T00:00:00Z'), confirmedSlot: null },
+      }),
+    )
+    prisma.activityParticipant.findUnique.mockResolvedValue(null)
+    prisma.userIdentity.findFirst.mockResolvedValue({ provider_user_id: 'U-line-creator' })
+    const res = makeRes()
+
+    await joinActivity(makeReq({ userId: PARTICIPANT_ID }), res)
+
+    expect(sendLinePushMessage).toHaveBeenCalledTimes(1)
+    expect(sendLinePushMessage).toHaveBeenCalledWith({
+      to: 'U-line-creator',
+      text: '「揪團活動」人數已滿，請確認成團',
+    })
+    expect(res.json).toHaveBeenCalledWith({ message: '報名成功' })
+  })
+
+  it('確認成團後對其他參與者推播 activity_confirmed 文案，建立者自己不收推播', async () => {
+    const slotA = makeSlot('slot-a', {
+      slot_start: new Date('2099-08-01T10:00:00Z'),
+      slot_end: new Date('2099-08-01T12:00:00Z'),
+      availabilities: [{ candidate_slot_id: 'slot-a' }],
+    })
+    const slotB = makeSlot('slot-b', {
+      slot_start: new Date('2099-08-02T10:00:00Z'),
+      slot_end: new Date('2099-08-02T12:00:00Z'),
+      availabilities: [],
+    })
+    prisma.activity.findUnique.mockResolvedValue(
+      makeActivity({
+        status: 'voting',
+        participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)],
+        candidateSlots: [slotA, slotB],
+        schedule: { requires_voting: true, deadline_at: new Date(), confirmedSlot: null },
+      }),
+    )
+    prisma.userIdentity.findFirst.mockResolvedValue({ provider_user_id: 'U-line-participant' })
+    const res = makeRes()
+
+    await confirmFormation(makeReq({ body: { candidateSlotId: 'slot-a' } }), res)
+
+    expect(sendLinePushMessage).toHaveBeenCalledTimes(1)
+    expect(sendLinePushMessage).toHaveBeenCalledWith({
+      to: 'U-line-participant',
+      text: '「揪團活動」已確認成團',
+    })
+    expect(res.json).toHaveBeenCalledWith({ message: '成團成功' })
+  })
+
+  it('建立者手動取消後對其他參與者推播 activity_cancelled 文案', async () => {
+    prisma.activity.findUnique.mockResolvedValue(
+      makeActivity({
+        status: 'recruiting',
+        participants: [makeParticipant(CREATOR_ID), makeParticipant(PARTICIPANT_ID)],
+      }),
+    )
+    prisma.userIdentity.findFirst.mockResolvedValue({ provider_user_id: 'U-line-participant' })
+    const res = makeRes()
+
+    await cancelActivity(makeReq(), res)
+
+    expect(sendLinePushMessage).toHaveBeenCalledTimes(1)
+    expect(sendLinePushMessage).toHaveBeenCalledWith({
+      to: 'U-line-participant',
+      text: '「揪團活動」已取消',
+    })
+    expect(res.json).toHaveBeenCalledWith({ message: '活動已取消' })
+  })
+
+  it('LINE 推播拋錯時 API 仍回成功，不影響站內通知', async () => {
+    prisma.activity.findUnique.mockResolvedValue(
+      makeActivity({
+        status: 'recruiting',
+        participant_target: 2,
+        participants: [makeParticipant(CREATOR_ID)],
+        candidateSlots: [makeSlot('slot-1')],
+        schedule: { requires_voting: false, deadline_at: new Date('2099-01-01T00:00:00Z'), confirmedSlot: null },
+      }),
+    )
+    prisma.activityParticipant.findUnique.mockResolvedValue(null)
+    prisma.userIdentity.findFirst.mockResolvedValue({ provider_user_id: 'U-line-creator' })
+    sendLinePushMessage.mockRejectedValue(new Error('LINE timeout'))
+    const res = makeRes()
+
+    await joinActivity(makeReq({ userId: PARTICIPANT_ID }), res)
+
+    expect(prisma.notification.create).toHaveBeenCalledWith({
+      data: { user_id: CREATOR_ID, type: 'formation_ready', reference_id: ACTIVITY_ID, reference_type: 'activity' },
+    })
+    expect(res.status).not.toHaveBeenCalledWith(500)
+    expect(res.json).toHaveBeenCalledWith({ message: '報名成功' })
   })
 })
