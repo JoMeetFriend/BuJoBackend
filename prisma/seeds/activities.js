@@ -442,5 +442,5 @@ export async function seedActivities(prisma, users) {
       calendarBoardGames,
       calendarWeekendBrunch,
     };
-  });
+  }, { timeout: 30_000 });
 }
