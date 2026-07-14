@@ -15,6 +15,7 @@ COPY . .
 RUN npx prisma generate
 
 ENV NODE_ENV=production
+ENV TZ=Asia/Taipei
 
 EXPOSE 3000
 
