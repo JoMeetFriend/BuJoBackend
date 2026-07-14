@@ -2,11 +2,18 @@ import { PrismaClient } from "@prisma/client";
 import { seedActivities } from "./seeds/activities.js";
 import { seedFriendships } from "./seeds/friendships.js";
 import { seedNotifications } from "./seeds/notifications.js";
+import { assertDemoSeedAllowed } from "./seeds/seedGuard.js";
 import { seedUsers } from "./seeds/users.js";
 
 const prisma = new PrismaClient();
 
 async function main() {
+  assertDemoSeedAllowed({
+    databaseUrl: process.env.DATABASE_URL,
+    nodeEnv: process.env.NODE_ENV,
+    allowDemoSeed: process.env.ALLOW_DEMO_SEED,
+  });
+
   console.log("🌱 開始種入新版 Demo 假資料...");
 
   const users = await seedUsers(prisma);
