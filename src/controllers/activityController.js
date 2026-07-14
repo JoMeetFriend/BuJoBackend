@@ -98,6 +98,19 @@ export async function createActivity(req, res) {
     return res.status(400).json({ message: '日期或時間格式不正確' })
   }
 
+  // 前端有擋結束時間必須晚於開始時間，但這是公開 API，不能只靠前端擋——這裡重新驗證一次，
+  // 避免繞過前端直接打 API 建出 slot_end <= slot_start 的候選時段（見情境二 join 603 行同樣原則）
+  if (candidateSlotsData.some((s) => s.slot_end <= s.slot_start)) {
+    return res.status(400).json({ message: '結束時間必須晚於開始時間' })
+  }
+  if (
+    scheduleExtra.time_window_start &&
+    scheduleExtra.time_window_end &&
+    scheduleExtra.time_window_end <= scheduleExtra.time_window_start
+  ) {
+    return res.status(400).json({ message: '結束時間必須晚於開始時間' })
+  }
+
   if (scheduleExtra.deadline_at <= new Date()) {
     return res.status(400).json({ message: '活動時間已經過去，請調整活動時間' })
   }
