@@ -65,6 +65,9 @@ describe("seedActivities", () => {
     const result = await seedActivities(prisma, users);
 
     expect(prisma.$transaction).toHaveBeenCalledTimes(1);
+    expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
+      timeout: 30_000,
+    });
     expect(transaction.activity.create).toHaveBeenCalledTimes(12);
     expect(Object.keys(result)).toEqual([
       "fixedRecruiting",
