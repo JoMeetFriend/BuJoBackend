@@ -589,15 +589,25 @@ const res = await fetch("http://localhost:3000/api/users/me/avatar", {
 
 **通知類型**
 
-| type                      | category   | message 格式                             | actions               |
-| ------------------------- | ---------- | ---------------------------------------- | --------------------- |
-| `friend_request_created`  | `friend`   | `{requesterName} 向你發送好友邀請`       | pending 時可接受/拒絕 |
-| `friend_request_accepted` | `friend`   | `{receiverName} 接受了你的好友邀請`      | 無                    |
-| `activity_created`        | `activity` | `{creatorName} 建立了新活動：{activity}` | 無                    |
+| type                      | category   | message 格式                                          | actions              |
+| ------------------------- | ---------- | ----------------------------------------------------- | -------------------- |
+| `friend_request_created`  | `friend`   | `{requesterName} 向你發送好友邀請`                    | pending 時可接受/拒絕 |
+| `friend_request_accepted` | `friend`   | `{receiverName} 接受了你的好友邀請`                   | 無                   |
+| `activity_created`        | `activity` | `{creatorName} 建立了新活動：{activity}`              | 無                   |
+| `formation_ready`         | `activity` | `「{activity}」人數已滿，請確認成團`                  | 無                   |
+| `time_to_pick`            | `activity` | `「{activity}」候選時段票數不相上下，請選擇最終時段`  | 無                   |
+| `activity_confirmed`      | `activity` | `「{activity}」已確認成團`                            | 無                   |
+| `activity_cancelled`      | `activity` | `「{activity}」已取消`                                | 無                   |
+
+- `formation_ready`：報名人數達到 `participant_target` 時通知建立者（收件人：建立者）。
+- `time_to_pick`：報名截止、活動進入決策緩衝期時通知建立者（收件人：建立者）。
+- `activity_confirmed`：建立者確認成團時通知其他參與者（收件人：建立者以外的參與者）。
+- `activity_cancelled`：活動取消時通知參與者——建立者手動取消（收件人：建立者以外的參與者）、截止未達標或決策期逾期自動取消（收件人：全體參與者）。
 
 **LINE 推播**
 
 - 目前 LINE 推播沒有新增 API；它是建立站內通知後的 best-effort side effect。
+- 好友邀請兩種通知、`activity_created`，以及四種活動生命週期通知（`formation_ready`、`time_to_pick`、`activity_confirmed`、`activity_cancelled`）都會在站內通知建立後嘗試 LINE 推播，文案與站內通知相同；未綁定 LINE 或該型別偏好關閉的使用者只收站內通知。
 - LINE Login identity 是 v1 binding source：後端用 `user_identities.provider = "line"` 的 `provider_user_id` 當 Messaging API `to`。
 - Messaging API channel access token 只用於 LINE Official Account 推播，設定在 `LINE_MESSAGING_CHANNEL_ACCESS_TOKEN`。
 - LINE Login channel 與 Messaging API channel 必須在 same provider，否則 LINE Login 拿到的 user id 不一定能用於官方帳號推播。
@@ -912,4 +922,4 @@ const res = await fetch("http://localhost:3000/api/users/me/avatar", {
 
 ### 人數滿額不再自動成團
 
-> **BREAKING**：`POST /api/activities/:id/join` 讓報名人數達到 `participant_target` 時，四個情境皆不再自動把活動狀態設為 `confirmed`。免投票（情境一）維持 `recruiting`；投票制（情境三／四）不論票數或交集是否一致，一律轉為 `voting`。兩種情況都會發送 `time_to_pick` 通知給建立者，最終成團一律要建立者手動呼叫 `POST /api/activities/:id/confirm-formation`。情境二本來就是如此，不受影響。
+> **BREAKING**：`POST /api/activities/:id/join` 讓報名人數達到 `participant_target` 時，四個情境皆不再自動把活動狀態設為 `confirmed`，一律轉為 `voting`（決策緩衝狀態）並發送 `formation_ready` 通知給建立者（`time_to_pick` 保留給報名截止進入決策期的情境），最終成團一律要建立者手動呼叫 `POST /api/activities/:id/confirm-formation`。
