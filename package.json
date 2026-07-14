@@ -12,6 +12,7 @@
     "test:coverage": "cross-env NODE_OPTIONS=--experimental-vm-modules jest --coverage",
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
+    "prisma:reset": "prisma migrate reset",
     "prisma:push": "prisma db push"
   },
   "dependencies": {
