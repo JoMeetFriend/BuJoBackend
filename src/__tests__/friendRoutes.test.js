@@ -35,17 +35,23 @@ describe("Friend API Routes Integration Tests", () => {
     it("2. 成功取得並正確過濾自己的資料 (200)", async () => {
       prisma.friendship.findMany.mockResolvedValue([
         {
+          id: "friendship-uuid-1",
           requester_id: testUserId,
           receiver_id: "friend-1",
           status: "accepted",
           requester: { id: testUserId, display_name: "Me" },
-          receiver: { id: "friend-1", display_name: "Bob" },
+          receiver: {
+            id: "friend-1",
+            display_name: "Bob",
+            bio: "我是 Bob 的簡介",
+          },
         },
         {
+          id: "friendship-uuid-2",
           requester_id: "friend-2",
           receiver_id: testUserId,
           status: "accepted",
-          requester: { id: "friend-2", display_name: "Alice" },
+          requester: { id: "friend-2", display_name: "Alice", bio: null },
           receiver: { id: testUserId, display_name: "Me" },
         },
       ]);
@@ -55,12 +61,17 @@ describe("Friend API Routes Integration Tests", () => {
         .set("Cookie", [`token=${validToken}`]);
 
       expect(res.status).toBe(200);
-
       expect(res.body).toHaveLength(2);
+
       expect(res.body[0].id).toBe("friend-1");
       expect(res.body[0].display_name).toBe("Bob");
+      expect(res.body[0].friendship_id).toBe("friendship-uuid-1");
+      expect(res.body[0].bio).toBe("我是 Bob 的簡介");
+
       expect(res.body[1].id).toBe("friend-2");
       expect(res.body[1].display_name).toBe("Alice");
+      expect(res.body[1].friendship_id).toBe("friendship-uuid-2");
+      expect(res.body[1].bio).toBeNull();
     });
   });
 });

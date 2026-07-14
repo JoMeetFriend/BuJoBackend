@@ -44,3 +44,29 @@ export const searchUsersByShortId = async (keyword, excludeUserId) => {
 
   return users;
 };
+
+export const updateUserName = async (userId, displayName) => {
+  return prisma.user.update({
+    where: { id: userId },
+    data: {
+      display_name: displayName,
+    },
+    select: {
+      id: true,
+      display_name: true,
+      avatar_url: true,
+    },
+  });
+};
+
+export const updateUserBio = async (userId, bio) => {
+  return prisma.user.update({
+    where: { id: userId },
+    data: { bio: bio },
+    select: {
+      id: true,
+      display_name: true,
+      bio: true,
+    },
+  });
+};

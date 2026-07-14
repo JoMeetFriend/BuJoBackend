@@ -8,25 +8,27 @@ datasource db {
 }
 
 model User {
-  id         String   @id @default(uuid())
-  display_name String
-  avatar_url String?
+  id               String   @id @default(uuid())
+  display_name     String
+  avatar_url       String?
   avatar_public_id String?
+  bio              String?
   created_at DateTime @default(now()) @db.Timestamptz
   updated_at DateTime @updatedAt @db.Timestamptz
 
-  identities               UserIdentity[]
-  sentRequests             Friendship[]             @relation("Requester")
-  receivedRequests         Friendship[]             @relation("Receiver")
-  notifications            Notification[]
-  notificationPreferences  NotificationPreference[]
-  notificationJobs         NotificationJob[]
-  activities               Activity[]
-  activityAvailabilities   ActivityAvailability[]
-  sentInvitations          ActivityInvitation[]   @relation("InvitationSent")
-  receivedInvitations      ActivityInvitation[]   @relation("InvitationReceived")
-  activityParticipants     ActivityParticipant[]
-  activityTiebreakVotes    ActivityTiebreakVote[]
+  identities                 UserIdentity[]
+  sentRequests               Friendship[]                @relation("Requester")
+  receivedRequests           Friendship[]                @relation("Receiver")
+  notifications              Notification[]
+  notificationPreferences    NotificationPreference[]
+  notificationJobs           NotificationJob[]
+  activities                 Activity[]
+  activityAvailabilities     ActivityAvailability[]
+  activityAvailabilityRanges ActivityAvailabilityRange[]
+  sentInvitations            ActivityInvitation[]        @relation("InvitationSent")
+  receivedInvitations        ActivityInvitation[]        @relation("InvitationReceived")
+  activityParticipants       ActivityParticipant[]
+  activityTiebreakVotes      ActivityTiebreakVote[]
 
   @@map("users")
 }
@@ -69,10 +71,12 @@ model Notification {
   reference_id   String?
   reference_type String?
   is_read        Boolean  @default(false)
+  dismissed_at   DateTime? @db.Timestamptz
   created_at     DateTime @default(now()) @db.Timestamptz
 
   user User @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
+  @@index([user_id, is_read])
   @@map("notifications")
 }
 
@@ -99,14 +103,15 @@ model Activity {
   created_at         DateTime       @default(now()) @db.Timestamptz
   updated_at         DateTime       @updatedAt @db.Timestamptz
 
-  creator          User                   @relation(fields: [creator_id], references: [id], onDelete: Cascade)
-  notificationJobs NotificationJob[]
-  schedule         ActivitySchedule?
-  candidateSlots   ActivityCandidateSlot[]
-  invitations      ActivityInvitation[]
-  participants     ActivityParticipant[]
-  tiebreakVotes    ActivityTiebreakVote[]
-  chat             ActivityChat?
+  creator            User                        @relation(fields: [creator_id], references: [id], onDelete: Cascade)
+  notificationJobs   NotificationJob[]
+  schedule           ActivitySchedule?
+  candidateSlots     ActivityCandidateSlot[]
+  invitations        ActivityInvitation[]
+  participants       ActivityParticipant[]
+  tiebreakVotes      ActivityTiebreakVote[]
+  chat               ActivityChat?
+  availabilityRanges ActivityAvailabilityRange[]
 
   @@map("activities")
 }
@@ -164,14 +169,24 @@ model ActivityInvitation {
   @@map("activity_invitations")
 }
 
-model ActivitySchedule {
-  id                String   @id @default(uuid())
-  activity_id       String   @unique
-  requires_voting   Boolean  @default(false)
-  deadline_at       DateTime @db.Timestamptz
-  confirmed_slot_id String?  @unique
+enum AvailabilityMode {
+  slot
+  range
+}
 
-  activity      Activity              @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+model ActivitySchedule {
+  id                String           @id @default(uuid())
+  activity_id       String           @unique
+  requires_voting   Boolean          @default(false)
+  deadline_at       DateTime         @db.Timestamptz
+  confirmed_slot_id String?          @unique
+  availability_mode AvailabilityMode @default(slot)
+  fixed_date        DateTime?        @db.Timestamptz
+  time_window_start DateTime?        @db.Timestamptz
+  time_window_end   DateTime?        @db.Timestamptz
+  vote_deadline_at  DateTime?        @db.Timestamptz
+
+  activity      Activity               @relation(fields: [activity_id], references: [id], onDelete: Cascade)
   confirmedSlot ActivityCandidateSlot? @relation("ConfirmedSlot", fields: [confirmed_slot_id], references: [id])
 
   @@map("activity_schedules")
@@ -185,25 +200,41 @@ model ActivityCandidateSlot {
   all_day     Boolean  @default(false)
   created_at  DateTime @default(now()) @db.Timestamptz
 
-  activity       Activity                @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+  activity       Activity               @relation(fields: [activity_id], references: [id], onDelete: Cascade)
   availabilities ActivityAvailability[]
   tiebreakVotes  ActivityTiebreakVote[]
-  confirmedFor   ActivitySchedule?       @relation("ConfirmedSlot")
+  confirmedFor   ActivitySchedule?      @relation("ConfirmedSlot")
 
   @@map("activity_candidate_slots")
 }
 
 model ActivityAvailability {
-  id                String   @id @default(uuid())
+  id                String    @id @default(uuid())
   candidate_slot_id String
   user_id           String
-  created_at        DateTime @default(now()) @db.Timestamptz
+  range_start       DateTime? @db.Timestamptz
+  range_end         DateTime? @db.Timestamptz
+  created_at        DateTime  @default(now()) @db.Timestamptz
 
   candidateSlot ActivityCandidateSlot @relation(fields: [candidate_slot_id], references: [id], onDelete: Cascade)
   user          User                  @relation(fields: [user_id], references: [id], onDelete: Cascade)
 
   @@unique([candidate_slot_id, user_id])
   @@map("activity_availabilities")
+}
+
+model ActivityAvailabilityRange {
+  id          String   @id @default(uuid())
+  activity_id String
+  user_id     String
+  range_start DateTime @db.Timestamptz
+  range_end   DateTime @db.Timestamptz
+  created_at  DateTime @default(now()) @db.Timestamptz
+
+  activity Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+  user     User     @relation(fields: [user_id], references: [id], onDelete: Cascade)
+
+  @@map("activity_availability_ranges")
 }
 
 model ActivityTiebreakVote {

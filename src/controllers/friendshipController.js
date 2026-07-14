@@ -49,7 +49,11 @@ export async function requestFriendship(req, res) {
       return res.status(409).json({ message });
     }
 
-    if (existingFriendship && existingFriendship.status !== "rejected") {
+    if (
+      existingFriendship &&
+      existingFriendship.status !== "rejected" &&
+      existingFriendship.status !== "deleted"
+    ) {
       return res.status(409).json({ message: "目前無法送出好友邀請" });
     }
 
@@ -199,6 +203,48 @@ export async function rejectFriendship(req, res) {
     });
   } catch (error) {
     console.error("rejectFriendship 錯誤：", error);
+    return res.status(500).json({ message: "伺服器錯誤" });
+  }
+}
+
+export async function removeFriendship(req, res) {
+  const userId = req.user.userId;
+  const { id } = req.params;
+
+  try {
+    const friendship = await prisma.friendship.findUnique({
+      where: { id },
+    });
+
+    if (!friendship) {
+      return res.status(404).json({ message: "找不到該好友關係" });
+    }
+
+    if (
+      friendship.requester_id !== userId &&
+      friendship.receiver_id !== userId
+    ) {
+      return res.status(403).json({ message: "無權操作此好友關係" });
+    }
+
+    if (friendship.status !== "accepted") {
+      return res.status(400).json({ message: "此狀態無法刪除好友" });
+    }
+
+    const updatedFriendship = await prisma.friendship.update({
+      where: { id },
+      data: { status: "deleted" },
+    });
+
+    return res.status(200).json({
+      message: "已刪除好友",
+      friendship: {
+        id: updatedFriendship.id,
+        status: updatedFriendship.status,
+      },
+    });
+  } catch (error) {
+    console.error("removeFriendship 錯誤：", error);
     return res.status(500).json({ message: "伺服器錯誤" });
   }
 }

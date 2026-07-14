@@ -8,13 +8,23 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET,
 });
 
-export const uploadAvatarImage = (file) => {
+export const uploadAvatarImage = (file, { publicId } = {}) => {
   return new Promise((resolve, reject) => {
+    const uploadOptions = {
+      folder: AVATAR_FOLDER,
+      resource_type: "image",
+    };
+
+    if (publicId) {
+      Object.assign(uploadOptions, {
+        public_id: publicId,
+        overwrite: true,
+        invalidate: true,
+      });
+    }
+
     const uploadStream = cloudinary.uploader.upload_stream(
-      {
-        folder: AVATAR_FOLDER,
-        resource_type: "image",
-      },
+      uploadOptions,
       (error, result) => {
         if (error) {
           reject(error);

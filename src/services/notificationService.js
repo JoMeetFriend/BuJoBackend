@@ -249,19 +249,115 @@ export async function notifyFriendsActivityCreated(
   return result;
 }
 
+export async function sendActivityLifecycleLineNotifications(
+  { userIds, activityId, type },
+  db = prisma,
+) {
+  if (!activityId) {
+    throw new Error("activityId is required");
+  }
+
+  if (!type) {
+    throw new Error("type is required");
+  }
+
+  if (!userIds || userIds.length === 0) {
+    return [];
+  }
+
+  let lineTextPromise = null;
+  const getLineText = () => {
+    if (!lineTextPromise) {
+      lineTextPromise = buildActivityLineMessage({ activityId, type }, db);
+    }
+
+    return lineTextPromise;
+  };
+
+  return Promise.all(
+    userIds.map((userId) =>
+      deliverLineNotification({ userId, type, getText: getLineText }, db),
+    ),
+  );
+}
+
 export async function listUserNotifications({ userId }, db = prisma) {
   if (!userId) {
     throw new Error("userId is required");
   }
 
   const notifications = await db.notification.findMany({
-    where: { user_id: userId },
+    where: {
+      user_id: userId,
+      dismissed_at: null,
+    },
     orderBy: { created_at: "desc" },
   });
 
   return Promise.all(
     notifications.map((notification) => formatNotification(notification, db)),
   );
+}
+
+export async function dismissNotification(
+  { userId, notificationId },
+  db = prisma,
+) {
+  if (!userId) {
+    throw new Error("userId is required");
+  }
+
+  if (!notificationId) {
+    throw new Error("notificationId is required");
+  }
+
+  const notification = await db.notification.findFirst({
+    where: {
+      id: notificationId,
+      user_id: userId,
+      dismissed_at: null,
+    },
+    select: {
+      id: true,
+      type: true,
+      reference_id: true,
+      reference_type: true,
+    },
+  });
+
+  if (!notification) {
+    return "not_found";
+  }
+
+  const isFriendRequest =
+    notification.type === NOTIFICATION_TYPES.FRIEND_REQUEST_CREATED &&
+    notification.reference_type === NOTIFICATION_REFERENCE_TYPES.FRIENDSHIP &&
+    notification.reference_id;
+
+  if (isFriendRequest) {
+    const friendship = await db.friendship.findUnique({
+      where: { id: notification.reference_id },
+      select: { status: true },
+    });
+
+    if (friendship?.status === "pending") {
+      return "pending_friend_request";
+    }
+  }
+
+  const result = await db.notification.updateMany({
+    where: {
+      id: notificationId,
+      user_id: userId,
+      dismissed_at: null,
+    },
+    data: {
+      is_read: true,
+      dismissed_at: new Date(),
+    },
+  });
+
+  return result.count === 0 ? "not_found" : "dismissed";
 }
 
 export async function markNotificationAsRead(
@@ -296,6 +392,16 @@ export async function markAllNotificationsAsRead({ userId }, db = prisma) {
       is_read: false,
     },
     data: { is_read: true },
+  });
+}
+
+export async function countUnreadNotifications({ userId }, db = prisma) {
+  if (!userId) {
+    throw new Error("userId is required");
+  }
+
+  return db.notification.count({
+    where: { user_id: userId, is_read: false },
   });
 }
 
@@ -422,7 +528,7 @@ function buildActivityMessage(type, { creatorName, activityTitle }) {
   }
 }
 
-async function buildActivityLineMessage({ activityId }, db) {
+export async function buildActivityLineMessage({ activityId, type }, db = prisma) {
   const activity = db.activity?.findUnique
     ? await db.activity.findUnique({
         where: { id: activityId },
@@ -437,7 +543,7 @@ async function buildActivityLineMessage({ activityId }, db) {
   const creatorName = activity?.creator?.display_name || "有人";
   const activityTitle = activity?.title || "新活動";
 
-  return `${creatorName} 建立了新活動：${activityTitle}`;
+  return buildActivityMessage(type, { creatorName, activityTitle });
 }
 
 async function deliverLineNotification({ userId, type, getText }, db) {
