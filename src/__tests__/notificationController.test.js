@@ -9,6 +9,7 @@ jest.unstable_mockModule("../lib/prisma.js", () => ({
       count: jest.fn(),
     },
     friendship: {
+      findMany: jest.fn(),
       findUnique: jest.fn(),
     },
     activity: {
@@ -100,14 +101,18 @@ describe("listNotifications", () => {
         created_at: createdAt,
       },
     ]);
-    prisma.friendship.findUnique.mockResolvedValue({
-      id: "friendship-1",
-      requester_id: "user-a",
-      receiver_id: "user-b",
-      status: "pending",
-      requester: { id: "user-a", display_name: "A", avatar_url: null },
-      receiver: { id: "user-b", display_name: "B", avatar_url: null },
-    });
+    prisma.friendship.findMany.mockResolvedValue([
+      {
+        id: "friendship-1",
+        status: "pending",
+        requester: {
+          id: "user-a",
+          display_name: "A",
+          avatar_url: "https://example.com/a.png",
+        },
+        receiver: { id: "user-b", display_name: "B", avatar_url: null },
+      },
+    ]);
     const res = makeRes();
 
     await listNotifications(makeReq({ userId: "user-b" }), res);
@@ -129,6 +134,11 @@ describe("listNotifications", () => {
           timeText: "10 分鐘前",
           isRead: false,
           createdAt: createdAt.toISOString(),
+          actor: {
+            id: "user-a",
+            displayName: "A",
+            avatarUrl: "https://example.com/a.png",
+          },
           reference: {
             type: "friendship",
             id: "friendship-1",
@@ -152,14 +162,14 @@ describe("listNotifications", () => {
         created_at: new Date(),
       },
     ]);
-    prisma.friendship.findUnique.mockResolvedValue({
-      id: "friendship-1",
-      requester_id: "user-a",
-      receiver_id: "user-b",
-      status: "accepted",
-      requester: { id: "user-a", display_name: "A", avatar_url: null },
-      receiver: { id: "user-b", display_name: "B", avatar_url: null },
-    });
+    prisma.friendship.findMany.mockResolvedValue([
+      {
+        id: "friendship-1",
+        status: "accepted",
+        requester: { id: "user-a", display_name: "A", avatar_url: null },
+        receiver: { id: "user-b", display_name: "B", avatar_url: null },
+      },
+    ]);
     const res = makeRes();
 
     await listNotifications(makeReq({ userId: "user-a" }), res);
@@ -169,6 +179,11 @@ describe("listNotifications", () => {
         expect.objectContaining({
           category: "friend",
           message: "B 接受了你的好友邀請",
+          actor: {
+            id: "user-b",
+            displayName: "B",
+            avatarUrl: null,
+          },
           reference: {
             type: "friendship",
             id: "friendship-1",
@@ -192,12 +207,14 @@ describe("listNotifications", () => {
         created_at: new Date(),
       },
     ]);
-    prisma.friendship.findUnique.mockResolvedValue({
-      id: "friendship-1",
-      status: "rejected",
-      requester: { id: "user-a", display_name: "A", avatar_url: null },
-      receiver: { id: "user-b", display_name: "B", avatar_url: null },
-    });
+    prisma.friendship.findMany.mockResolvedValue([
+      {
+        id: "friendship-1",
+        status: "rejected",
+        requester: { id: "user-a", display_name: "A", avatar_url: null },
+        receiver: { id: "user-b", display_name: "B", avatar_url: null },
+      },
+    ]);
     const res = makeRes();
 
     await listNotifications(makeReq({ userId: "user-b" }), res);
@@ -217,6 +234,7 @@ describe("listNotifications", () => {
   });
 
   it("B 查通知時可看到 A 建立活動通知", async () => {
+    const createdAt = new Date("2026-07-16T00:00:00.000Z");
     prisma.notification.findMany.mockResolvedValue([
       {
         id: "notification-4",
@@ -225,6 +243,58 @@ describe("listNotifications", () => {
         reference_id: "activity-1",
         reference_type: "activity",
         is_read: true,
+        created_at: createdAt,
+      },
+    ]);
+    prisma.activity.findUnique.mockResolvedValue({
+      id: "activity-1",
+      title: "週末野餐",
+      status: "recruiting",
+      creator: {
+        id: "user-a",
+        display_name: "A",
+        avatar_url: "https://example.com/a.png",
+      },
+    });
+    const res = makeRes();
+
+    await listNotifications(makeReq({ userId: "user-b" }), res);
+
+    expect(res.json).toHaveBeenCalledWith({
+      notifications: [
+        expect.objectContaining({
+          id: "notification-4",
+          type: "activity_created",
+          category: "activity",
+          message: "A 建立了新活動：週末野餐",
+          timeText: expect.any(String),
+          isRead: true,
+          createdAt: createdAt.toISOString(),
+          actor: {
+            id: "user-a",
+            displayName: "A",
+            avatarUrl: "https://example.com/a.png",
+          },
+          reference: {
+            type: "activity",
+            id: "activity-1",
+            status: "recruiting",
+          },
+          actions: [],
+        }),
+      ],
+    });
+  });
+
+  it("activity_created creator 沒有頭像時 HTTP response 保留 actor 與 null avatar", async () => {
+    prisma.notification.findMany.mockResolvedValue([
+      {
+        id: "notification-activity-null-avatar",
+        user_id: "user-b",
+        type: "activity_created",
+        reference_id: "activity-1",
+        reference_type: "activity",
+        is_read: false,
         created_at: new Date(),
       },
     ]);
@@ -241,16 +311,11 @@ describe("listNotifications", () => {
     expect(res.json).toHaveBeenCalledWith({
       notifications: [
         expect.objectContaining({
-          type: "activity_created",
-          category: "activity",
-          message: "A 建立了新活動：週末野餐",
-          isRead: true,
-          reference: {
-            type: "activity",
-            id: "activity-1",
-            status: "recruiting",
+          actor: {
+            id: "user-a",
+            displayName: "A",
+            avatarUrl: null,
           },
-          actions: [],
         }),
       ],
     });
@@ -285,7 +350,46 @@ describe("listNotifications", () => {
 
     expect(res.json).toHaveBeenCalledWith({
       notifications: [
-        expect.objectContaining({ type, message: expectedMessage }),
+        expect.objectContaining({ type, message: expectedMessage, actor: null }),
+      ],
+    });
+  });
+
+  it("一般通知固定回傳 actor: null 且保留既有欄位", async () => {
+    const createdAt = new Date("2026-07-16T00:00:00.000Z");
+    prisma.notification.findMany.mockResolvedValue([
+      {
+        id: "notification-general",
+        user_id: "user-b",
+        type: "custom_type",
+        reference_id: null,
+        reference_type: null,
+        is_read: false,
+        created_at: createdAt,
+      },
+    ]);
+    const res = makeRes();
+
+    await listNotifications(makeReq({ userId: "user-b" }), res);
+
+    expect(res.json).toHaveBeenCalledWith({
+      notifications: [
+        {
+          id: "notification-general",
+          type: "custom_type",
+          category: "general",
+          message: "你有一則新通知",
+          timeText: expect.any(String),
+          isRead: false,
+          createdAt: createdAt.toISOString(),
+          actor: null,
+          reference: {
+            type: null,
+            id: null,
+            status: null,
+          },
+          actions: [],
+        },
       ],
     });
   });

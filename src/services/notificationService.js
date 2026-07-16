@@ -294,8 +294,45 @@ export async function listUserNotifications({ userId }, db = prisma) {
     orderBy: { created_at: "desc" },
   });
 
+  const friendshipIds = [
+    ...new Set(
+      notifications
+        .filter(
+          (notification) =>
+            notification.reference_type ===
+              NOTIFICATION_REFERENCE_TYPES.FRIENDSHIP &&
+            notification.reference_id,
+        )
+        .map((notification) => notification.reference_id),
+    ),
+  ];
+
+  const friendships =
+    friendshipIds.length > 0
+      ? await db.friendship.findMany({
+          where: {
+            id: { in: friendshipIds },
+          },
+          select: {
+            id: true,
+            status: true,
+            requester: {
+              select: { id: true, display_name: true, avatar_url: true },
+            },
+            receiver: {
+              select: { id: true, display_name: true, avatar_url: true },
+            },
+          },
+        })
+      : [];
+  const friendshipsById = new Map(
+    friendships.map((friendship) => [friendship.id, friendship]),
+  );
+
   return Promise.all(
-    notifications.map((notification) => formatNotification(notification, db)),
+    notifications.map((notification) =>
+      formatNotification(notification, db, friendshipsById),
+    ),
   );
 }
 
@@ -405,9 +442,9 @@ export async function countUnreadNotifications({ userId }, db = prisma) {
   });
 }
 
-async function formatNotification(notification, db) {
+async function formatNotification(notification, db, friendshipsById) {
   if (notification.reference_type === NOTIFICATION_REFERENCE_TYPES.FRIENDSHIP) {
-    return formatFriendshipNotification(notification, db);
+    return formatFriendshipNotification(notification, friendshipsById);
   }
 
   if (notification.reference_type === NOTIFICATION_REFERENCE_TYPES.ACTIVITY) {
@@ -425,19 +462,9 @@ async function formatNotification(notification, db) {
   });
 }
 
-async function formatFriendshipNotification(notification, db) {
+function formatFriendshipNotification(notification, friendshipsById) {
   const friendship = notification.reference_id
-    ? await db.friendship.findUnique({
-        where: { id: notification.reference_id },
-        include: {
-          requester: {
-            select: { id: true, display_name: true, avatar_url: true },
-          },
-          receiver: {
-            select: { id: true, display_name: true, avatar_url: true },
-          },
-        },
-      })
+    ? friendshipsById.get(notification.reference_id)
     : null;
 
   const requesterName = friendship?.requester?.display_name || "有人";
@@ -450,10 +477,28 @@ async function formatFriendshipNotification(notification, db) {
     notification.type === NOTIFICATION_TYPES.FRIEND_REQUEST_ACCEPTED
       ? `${receiverName} 接受了你的好友邀請`
       : `${requesterName} 向你發送好友邀請`;
+  let actorUser = null;
+
+  if (notification.type === NOTIFICATION_TYPES.FRIEND_REQUEST_CREATED) {
+    actorUser = friendship?.requester;
+  } else if (
+    notification.type === NOTIFICATION_TYPES.FRIEND_REQUEST_ACCEPTED
+  ) {
+    actorUser = friendship?.receiver;
+  }
+
+  const actor = actorUser
+    ? {
+        id: actorUser.id,
+        displayName: actorUser.display_name,
+        avatarUrl: actorUser.avatar_url,
+      }
+    : null;
 
   return buildNotificationResponse(notification, {
     category: "friend",
     message,
+    actor,
     reference: {
       type: NOTIFICATION_REFERENCE_TYPES.FRIENDSHIP,
       id: notification.reference_id,
@@ -500,10 +545,19 @@ async function formatActivityNotification(notification, db) {
 
   const creatorName = activity?.creator?.display_name || "有人";
   const activityTitle = activity?.title || "新活動";
+  const actor =
+    notification.type === NOTIFICATION_TYPES.ACTIVITY_CREATED && activity?.creator
+      ? {
+          id: activity.creator.id,
+          displayName: activity.creator.display_name,
+          avatarUrl: activity.creator.avatar_url,
+        }
+      : null;
 
   return buildNotificationResponse(notification, {
     category: "activity",
     message: buildActivityMessage(notification.type, { creatorName, activityTitle }),
+    actor,
     reference: {
       type: NOTIFICATION_REFERENCE_TYPES.ACTIVITY,
       id: notification.reference_id,
@@ -606,7 +660,7 @@ async function isLineNotificationEnabled({ userId, type }, db) {
 
 function buildNotificationResponse(
   notification,
-  { category, message, reference, actions = [] },
+  { category, message, reference, actions = [], actor = null },
 ) {
   return {
     id: notification.id,
@@ -616,6 +670,7 @@ function buildNotificationResponse(
     timeText: formatTimeText(notification.created_at),
     isRead: notification.is_read,
     createdAt: notification.created_at.toISOString(),
+    actor,
     reference,
     actions,
   };
