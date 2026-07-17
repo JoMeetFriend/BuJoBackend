@@ -15,3 +15,11 @@ export const signupLimiter = rateLimit({
   standardHeaders: 'draft-8',
   legacyHeaders: false,
 })
+
+export const placesLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  limit: 30,
+  message: { message: '搜尋太頻繁，請稍後再試' },
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+})

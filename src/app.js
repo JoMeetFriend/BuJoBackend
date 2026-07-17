@@ -10,6 +10,7 @@ import activityRoutes from "./routes/activities.js";
 import userRoutes from "./routes/users.js";
 import friendRoutes from "./routes/friends.js";
 import notificationRoutes from "./routes/notifications.js";
+import placesRoutes from "./routes/places.js";
 
 const app = express();
 
@@ -48,6 +49,7 @@ app.use("/api/activities", activityRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/friends", friendRoutes);
 app.use("/api/notifications", notificationRoutes);
+app.use("/api/places", placesRoutes);
 
 app.use((err, req, res, next) => {
   console.error("未攔截的例外：", err);
