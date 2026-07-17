@@ -36,15 +36,25 @@ describe("autocompleteAddress", () => {
     expect(res.json).toHaveBeenCalledWith({ results: [] });
   });
 
-  it("service 回傳 ok 時把 results 傳給前端", async () => {
+  it("service 回傳 ok 時把 results 傳給前端，預設 global 為 false", async () => {
     searchAddress.mockResolvedValue({ status: "ok", results: ["台北車站"] });
     const req = makeReq({ q: "台北" });
     const res = makeRes();
 
     await autocompleteAddress(req, res);
 
-    expect(searchAddress).toHaveBeenCalledWith("台北");
+    expect(searchAddress).toHaveBeenCalledWith("台北", { global: false });
     expect(res.json).toHaveBeenCalledWith({ results: ["台北車站"] });
+  });
+
+  it("query 帶 global=true 時會把 global: true 傳給 service", async () => {
+    searchAddress.mockResolvedValue({ status: "ok", results: ["Tokyo Station"] });
+    const req = makeReq({ q: "Tokyo", global: "true" });
+    const res = makeRes();
+
+    await autocompleteAddress(req, res);
+
+    expect(searchAddress).toHaveBeenCalledWith("Tokyo", { global: true });
   });
 
   it("service 失敗時回傳 502", async () => {

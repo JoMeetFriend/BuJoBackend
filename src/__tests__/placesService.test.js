@@ -18,13 +18,13 @@ describe("placesService", () => {
     delete process.env.LOCATIONIQ_API_KEY;
     const fetchImpl = jest.fn();
 
-    const result = await searchAddress("台北車站", fetchImpl);
+    const result = await searchAddress("台北車站", {}, fetchImpl);
 
     expect(result).toEqual({ status: "failed", reason: "missing_api_key" });
     expect(fetchImpl).not.toHaveBeenCalled();
   });
 
-  it("成功時用正確 endpoint 與參數呼叫 LocationIQ 並回傳地址清單", async () => {
+  it("成功時用正確 endpoint 與參數呼叫 LocationIQ 並回傳地址清單，預設限定台灣", async () => {
     process.env.LOCATIONIQ_API_KEY = "test-key";
     const fetchImpl = jest.fn().mockResolvedValue({
       ok: true,
@@ -35,7 +35,7 @@ describe("placesService", () => {
       ],
     });
 
-    const result = await searchAddress("台北", fetchImpl);
+    const result = await searchAddress("台北", {}, fetchImpl);
 
     expect(result).toEqual({
       status: "ok",
@@ -54,11 +54,50 @@ describe("placesService", () => {
     expect(options.signal).toBeInstanceOf(AbortSignal);
   });
 
+  it("global 為 true 時不帶 countrycodes 限制", async () => {
+    process.env.LOCATIONIQ_API_KEY = "test-key";
+    const fetchImpl = jest.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => [{ display_name: "Tokyo Station, Japan" }],
+    });
+
+    const result = await searchAddress("Tokyo", { global: true }, fetchImpl);
+
+    expect(result).toEqual({ status: "ok", results: ["Tokyo Station, Japan"] });
+    const [calledUrl] = fetchImpl.mock.calls[0];
+    const url = new URL(calledUrl);
+    expect(url.searchParams.has("countrycodes")).toBe(false);
+  });
+
+  it("同一個查詢字串在限定台灣跟不限定台灣是各自獨立的快取，不會互相污染", async () => {
+    process.env.LOCATIONIQ_API_KEY = "test-key";
+    const fetchImpl = jest
+      .fn()
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => [{ display_name: "台灣的結果" }],
+      })
+      .mockResolvedValueOnce({
+        ok: true,
+        status: 200,
+        json: async () => [{ display_name: "全球的結果" }],
+      });
+
+    const twResult = await searchAddress("同名地點", {}, fetchImpl);
+    const globalResult = await searchAddress("同名地點", { global: true }, fetchImpl);
+
+    expect(twResult).toEqual({ status: "ok", results: ["台灣的結果"] });
+    expect(globalResult).toEqual({ status: "ok", results: ["全球的結果"] });
+    expect(fetchImpl).toHaveBeenCalledTimes(2);
+  });
+
   it("LocationIQ 回傳 404（查無結果）時回傳空陣列", async () => {
     process.env.LOCATIONIQ_API_KEY = "test-key";
     const fetchImpl = jest.fn().mockResolvedValue({ ok: false, status: 404 });
 
-    const result = await searchAddress("xxxxxxxxx", fetchImpl);
+    const result = await searchAddress("xxxxxxxxx", {}, fetchImpl);
 
     expect(result).toEqual({ status: "ok", results: [] });
   });
@@ -67,7 +106,7 @@ describe("placesService", () => {
     process.env.LOCATIONIQ_API_KEY = "test-key";
     const fetchImpl = jest.fn().mockResolvedValue({ ok: false, status: 500 });
 
-    const result = await searchAddress("台北", fetchImpl);
+    const result = await searchAddress("台北", {}, fetchImpl);
 
     expect(result).toEqual({
       status: "failed",
@@ -80,7 +119,7 @@ describe("placesService", () => {
     process.env.LOCATIONIQ_API_KEY = "test-key";
     const fetchImpl = jest.fn().mockRejectedValue(new Error("network down"));
 
-    const result = await searchAddress("台北", fetchImpl);
+    const result = await searchAddress("台北", {}, fetchImpl);
 
     expect(result).toEqual({
       status: "failed",
@@ -97,8 +136,8 @@ describe("placesService", () => {
       json: async () => [{ display_name: "快取測試地址" }],
     });
 
-    const first = await searchAddress("快取測試", fetchImpl);
-    const second = await searchAddress("快取測試", fetchImpl);
+    const first = await searchAddress("快取測試", {}, fetchImpl);
+    const second = await searchAddress("快取測試", {}, fetchImpl);
 
     expect(first).toEqual({ status: "ok", results: ["快取測試地址"] });
     expect(second).toEqual({ status: "ok", results: ["快取測試地址"] });
@@ -113,8 +152,8 @@ describe("placesService", () => {
       json: async () => [{ display_name: "大小寫測試地址" }],
     });
 
-    await searchAddress("Cache Test", fetchImpl);
-    const second = await searchAddress("  cache test  ", fetchImpl);
+    await searchAddress("Cache Test", {}, fetchImpl);
+    const second = await searchAddress("  cache test  ", {}, fetchImpl);
 
     expect(second).toEqual({ status: "ok", results: ["大小寫測試地址"] });
     expect(fetchImpl).toHaveBeenCalledTimes(1);
@@ -124,8 +163,8 @@ describe("placesService", () => {
     process.env.LOCATIONIQ_API_KEY = "test-key";
     const fetchImpl = jest.fn().mockResolvedValue({ ok: false, status: 404 });
 
-    await searchAddress("查無此地址快取測試", fetchImpl);
-    await searchAddress("查無此地址快取測試", fetchImpl);
+    await searchAddress("查無此地址快取測試", {}, fetchImpl);
+    await searchAddress("查無此地址快取測試", {}, fetchImpl);
 
     expect(fetchImpl).toHaveBeenCalledTimes(1);
   });
@@ -141,8 +180,8 @@ describe("placesService", () => {
         json: async () => [{ display_name: "重試成功地址" }],
       });
 
-    const first = await searchAddress("重試查詢", fetchImpl);
-    const second = await searchAddress("重試查詢", fetchImpl);
+    const first = await searchAddress("重試查詢", {}, fetchImpl);
+    const second = await searchAddress("重試查詢", {}, fetchImpl);
 
     expect(first.status).toBe("failed");
     expect(second).toEqual({ status: "ok", results: ["重試成功地址"] });
@@ -157,9 +196,9 @@ describe("placesService", () => {
       json: async () => [{ display_name: "清快取測試地址" }],
     });
 
-    await searchAddress("清快取測試", fetchImpl);
+    await searchAddress("清快取測試", {}, fetchImpl);
     clearAddressCache();
-    await searchAddress("清快取測試", fetchImpl);
+    await searchAddress("清快取測試", {}, fetchImpl);
 
     expect(fetchImpl).toHaveBeenCalledTimes(2);
   });

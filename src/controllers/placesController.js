@@ -6,7 +6,8 @@ export async function autocompleteAddress(req, res) {
     return res.json({ results: [] })
   }
 
-  const result = await searchAddress(query)
+  const global = req.query.global === 'true'
+  const result = await searchAddress(query, { global })
 
   if (result.status !== 'ok') {
     console.error('LocationIQ 地址搜尋失敗：', result)

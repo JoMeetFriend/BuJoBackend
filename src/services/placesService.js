@@ -5,8 +5,8 @@ const CACHE_MAX_ENTRIES = 200;
 
 const addressCache = new Map();
 
-function getCacheKey(query) {
-  return query.trim().toLowerCase();
+function getCacheKey(query, global) {
+  return `${global ? "global" : "tw"}:${query.trim().toLowerCase()}`;
 }
 
 function getCachedResults(key) {
@@ -30,13 +30,13 @@ export function clearAddressCache() {
   addressCache.clear();
 }
 
-export async function searchAddress(query, fetchImpl = globalThis.fetch) {
+export async function searchAddress(query, { global = false } = {}, fetchImpl = globalThis.fetch) {
   const apiKey = process.env.LOCATIONIQ_API_KEY;
   if (!apiKey) {
     return { status: "failed", reason: "missing_api_key" };
   }
 
-  const cacheKey = getCacheKey(query);
+  const cacheKey = getCacheKey(query, global);
   const cachedResults = getCachedResults(cacheKey);
   if (cachedResults !== undefined) {
     return { status: "ok", results: cachedResults };
@@ -47,7 +47,9 @@ export async function searchAddress(query, fetchImpl = globalThis.fetch) {
   url.searchParams.set("q", query);
   url.searchParams.set("format", "json");
   url.searchParams.set("limit", "5");
-  url.searchParams.set("countrycodes", "tw");
+  if (!global) {
+    url.searchParams.set("countrycodes", "tw");
+  }
   url.searchParams.set("accept-language", "zh-TW");
 
   try {
