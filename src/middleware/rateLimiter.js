@@ -16,10 +16,13 @@ export const signupLimiter = rateLimit({
   legacyHeaders: false,
 })
 
+// 掛在 authenticate 之後，req.user.userId 一定存在，用登入使用者計算配額，
+// 避免同一個 NAT/公司網路後面的多個使用者共用同一組 IP 配額互相卡到
 export const placesLimiter = rateLimit({
   windowMs: 60 * 1000,
   limit: 30,
   message: { message: '搜尋太頻繁，請稍後再試' },
   standardHeaders: 'draft-8',
   legacyHeaders: false,
+  keyGenerator: (req) => req.user.userId,
 })
