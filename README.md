@@ -61,7 +61,7 @@ npm start     # 正式啟動
 
 - **本地帳密**：註冊時以 `bcrypt`（cost 10）雜湊密碼存入 `password_hash`，登入時以 `bcrypt.compare` 驗證，皆有 rate limit 防護
 - **Google 登入**：前端取得 Google ID Token 後送至 `POST /api/auth/google`，後端以 `google-auth-library` 驗證 Token 有效性與 audience
-- **LINE Login**：`GET /api/auth/line` 導向 LINE 授權頁 → LINE 導回後端 `GET /api/auth/line/callback` → 後端驗證一次性 `state`（存於 `OAuthAttempt` 表，雜湊儲存、10 分鐘過期）→ 以 code 換 token 並驗證 ID Token → 建立或連結使用者 → 導回前端。整個 OAuth 流程（state 驗證、code 交換）完全在後端處理
+- **LINE Login / 綁定**：`GET /api/auth/line` 使用 `bot_prompt=normal`；已登入使用者由 `GET /api/auth/line/link` 使用 `bot_prompt=aggressive`。LINE 導回 `GET /api/auth/line/callback` 後，後端會先驗證並一次性消耗 `state`（存於 `OAuthAttempt` 表，雜湊儲存、10 分鐘過期），再由 attempt 的 `user_id` 判斷這次是 login 或 link。login 成功會簽發 `token` cookie 並回前端首頁；link 成功回 `/profile/edit?linked=line`；link 取消或失敗分別回 `/profile/edit?error=line_link_cancelled`、`/profile/edit?error=line_link_failed`，不會把已登入使用者送回登入頁。整個 OAuth 流程（state 驗證、code 交換）完全在後端處理
 
 詳細 request/response 格式見 [API_DOCS.md](./API_DOCS.md)。
 

@@ -143,6 +143,33 @@ Production：`https://bujo-backend.onrender.com`
 
 ---
 
+### GET `/api/auth/line` — 開始 LINE 登入
+
+後端建立 `user_id = null` 的一次性 OAuth attempt，並以 `bot_prompt=normal` 導向 LINE 授權頁。
+
+### GET `/api/auth/line/link` — 綁定 LINE 帳號 🔒
+
+> 需要登入（cookie 中有效的 `token`）
+
+後端以目前登入者 ID 建立一次性 OAuth attempt，並以 `bot_prompt=aggressive` 導向 LINE 授權頁。
+
+### GET `/api/auth/line/callback` — LINE OAuth callback
+
+callback 會先驗證並消耗 `state`，再由 OAuth attempt 的 `user_id` 判斷 login 或 link；query string 不可自行指定 mode。缺失、不存在、過期或已消耗的 state 固定導向 `/login?error=line_login_failed`，且不交換 token、不建立 identity 或簽發 cookie。
+
+| Mode  | 結果 | 前端 redirect | Cookie / identity 行為 |
+| ----- | ---- | ------------- | ---------------------- |
+| login | 成功 | `/` | 建立或取得使用者並簽發 `token` cookie |
+| login | 取消 | `/login?error=line_cancelled` | 不簽發 cookie |
+| login | 失敗 | `/login?error=line_login_failed` | 不簽發 cookie |
+| link | 成功 | `/profile/edit?linked=line` | 綁定 attempt 指定的使用者，不簽發新 cookie |
+| link | 取消 | `/profile/edit?error=line_link_cancelled` | 不建立 identity、不回登入頁 |
+| link | 失敗或 LINE identity 已屬其他帳號 | `/profile/edit?error=line_link_failed` | 不建立、移動或複製 identity，不回登入頁 |
+
+這三個既有 endpoint 只處理 LINE Login/OAuth onboarding；本契約沒有新增 endpoint、資料表、migration、webhook、官方帳號好友狀態追蹤，也不修改 LINE 推播訊息、notification preference 或 delivery service。
+
+---
+
 ## 前端使用範例
 
 ```js
