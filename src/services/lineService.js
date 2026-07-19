@@ -1,6 +1,8 @@
 import crypto from "crypto";
 import prisma from "../lib/prisma.js";
 
+const LINE_BOT_PROMPTS = new Set(["normal", "aggressive"]);
+
 function randomToken() {
   return crypto.randomBytes(32).toString("base64url");
 }
@@ -21,7 +23,11 @@ export function getLineConfig() {
   return { channelId, channelSecret, callbackUrl };
 }
 
-export async function createLineAuthorizationUrl(userId = null) {
+export async function createLineAuthorizationUrl(userId = null, botPrompt = "normal") {
+  if (!LINE_BOT_PROMPTS.has(botPrompt)) {
+    throw new Error("LINE bot_prompt 無效");
+  }
+
   const { channelId, callbackUrl } = getLineConfig();
   const state = randomToken();
   const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
@@ -45,7 +51,7 @@ export async function createLineAuthorizationUrl(userId = null) {
   url.searchParams.set("redirect_uri", callbackUrl);
   url.searchParams.set("scope", "profile openid");
   url.searchParams.set("state", state);
-  url.searchParams.set("bot_prompt", "normal");
+  url.searchParams.set("bot_prompt", botPrompt);
 
   return url;
 }
