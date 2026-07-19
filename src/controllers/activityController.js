@@ -8,6 +8,7 @@ import {
 // 情境 a（日期時間都固定，單一候選時段、免投票）、情境 b（日期固定、候選時段複選投票）、
 // 情境 c（候選日期複選、統一時間）、情境 d（候選日期各自不同時段）皆已支援，皆含到期判定。
 // 候選時段平票時交由建立者裁決（voting 狀態的 confirmFormation），沒有額外的決選投票關卡。
+const ACTIVITY_TITLE_MAX_LENGTH = 15
 
 export async function createActivity(req, res) {
   const {
@@ -22,9 +23,13 @@ export async function createActivity(req, res) {
   const isVotingD = Array.isArray(dateSlots) && dateSlots.length > 0
   const isVotingB = !!singleDate && !startDate && !isVotingC && !isVotingD
   const isVoting = isVotingB || isVotingC || isVotingD
+  const normalizedTitle = typeof title === 'string' ? title.trim() : ''
 
-  if (!title) {
+  if (!normalizedTitle) {
     return res.status(400).json({ message: '活動名稱為必填' })
+  }
+  if (normalizedTitle.length > ACTIVITY_TITLE_MAX_LENGTH) {
+    return res.status(400).json({ message: `活動名稱最多 ${ACTIVITY_TITLE_MAX_LENGTH} 字` })
   }
   if (!deadline) {
     return res.status(400).json({ message: '流團時間為必填' })
@@ -124,7 +129,7 @@ export async function createActivity(req, res) {
     const activity = await prisma.activity.create({
       data: {
         creator_id: creatorId,
-        title,
+        title: normalizedTitle,
         description: note ?? null,
         location: location ?? null,
         category: type ?? null,
@@ -144,7 +149,7 @@ export async function createActivity(req, res) {
           create: { user_id: creatorId },
         },
         chat: {
-          create: { name: title },
+          create: { name: normalizedTitle },
         },
       },
       include: { candidateSlots: true },
