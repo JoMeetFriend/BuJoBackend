@@ -74,6 +74,64 @@ function makeParticipant(userId, overrides = {}) {
   }
 }
 
+describe('createActivity - 活動名稱長度驗證', () => {
+  beforeEach(() => {
+    jest.clearAllMocks()
+  })
+
+  const validFixedBody = {
+    deadline: new Date('2026-07-31T00:00:00Z').toISOString(),
+    startDate: '2026/08/01',
+    startTime: '上午 9:00',
+    endDate: '2026/08/01',
+    endTime: '上午 10:00',
+  }
+
+  it.each([
+    ['缺少 title', undefined],
+    ['空白 title', '   '],
+    ['非字串 title', 123],
+  ])('%s 時回 400，且不建立活動', async (_label, title) => {
+    const req = makeReq({ body: { ...validFixedBody, title } })
+    const res = makeRes()
+
+    await createActivity(req, res)
+
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(res.json).toHaveBeenCalledWith({ message: '活動名稱為必填' })
+    expect(prisma.activity.create).not.toHaveBeenCalled()
+  })
+
+  it('title 超過 15 字時回 400，且不建立活動', async () => {
+    const req = makeReq({ body: { ...validFixedBody, title: '1234567890123456' } })
+    const res = makeRes()
+
+    await createActivity(req, res)
+
+    expect(res.status).toHaveBeenCalledWith(400)
+    expect(res.json).toHaveBeenCalledWith({ message: '活動名稱最多 15 字' })
+    expect(prisma.activity.create).not.toHaveBeenCalled()
+  })
+
+  it('title trim 後剛好 15 字時可建立，activity title 與 chat name 使用 trim 後文字', async () => {
+    prisma.activity.create.mockResolvedValue({ id: ACTIVITY_ID, candidateSlots: [] })
+    const req = makeReq({ body: { ...validFixedBody, title: '  123456789012345  ' } })
+    const res = makeRes()
+
+    await createActivity(req, res)
+
+    expect(res.status).toHaveBeenCalledWith(201)
+    expect(prisma.activity.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          title: '123456789012345',
+          chat: { create: { name: '123456789012345' } },
+        }),
+      }),
+    )
+  })
+})
+
 function makeActivity(overrides = {}) {
   return {
     id: ACTIVITY_ID,
