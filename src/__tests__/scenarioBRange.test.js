@@ -106,8 +106,8 @@ describe('createActivity - 情境二 range 模式', () => {
         title: '情境二測試',
         deadline: new Date(2026, 6, 31).toISOString(),
         singleDate: '2026/08/01',
-        timeWindowStart: '上午 9:00',
-        timeWindowEnd: '下午 6:00',
+        timeWindowStart: '09:00',
+        timeWindowEnd: '18:00',
       },
     })
     const res = makeRes()
