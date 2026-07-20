@@ -143,6 +143,33 @@ Production：`https://bujo-backend.onrender.com`
 
 ---
 
+### GET `/api/auth/line` — 開始 LINE 登入
+
+後端建立 `user_id = null` 的一次性 OAuth attempt，並以 `bot_prompt=normal` 導向 LINE 授權頁。
+
+### GET `/api/auth/line/link` — 綁定 LINE 帳號 🔒
+
+> 需要登入（cookie 中有效的 `token`）
+
+後端以目前登入者 ID 建立一次性 OAuth attempt，並以 `bot_prompt=aggressive` 導向 LINE 授權頁。
+
+### GET `/api/auth/line/callback` — LINE OAuth callback
+
+callback 會先驗證並消耗 `state`，再由 OAuth attempt 的 `user_id` 判斷 login 或 link；query string 不可自行指定 mode。缺失、不存在、過期或已消耗的 state 固定導向 `/login?error=line_login_failed`，且不交換 token、不建立 identity 或簽發 cookie。
+
+| Mode  | 結果 | 前端 redirect | Cookie / identity 行為 |
+| ----- | ---- | ------------- | ---------------------- |
+| login | 成功 | `/` | 建立或取得使用者並簽發 `token` cookie |
+| login | 取消 | `/login?error=line_cancelled` | 不簽發 cookie |
+| login | 失敗 | `/login?error=line_login_failed` | 不簽發 cookie |
+| link | 成功 | `/profile/edit?linked=line` | 綁定 attempt 指定的使用者，不簽發新 cookie |
+| link | 取消 | `/profile/edit?error=line_link_cancelled` | 不建立 identity、不回登入頁 |
+| link | 失敗或 LINE identity 已屬其他帳號 | `/profile/edit?error=line_link_failed` | 不建立、移動或複製 identity，不回登入頁 |
+
+這三個既有 endpoint 只處理 LINE Login/OAuth onboarding；本契約沒有新增 endpoint、資料表、migration、webhook、官方帳號好友狀態追蹤，也不修改 LINE 推播訊息、notification preference 或 delivery service。
+
+---
+
 ## 前端使用範例
 
 ```js
@@ -555,7 +582,7 @@ const res = await fetch("http://localhost:3000/api/users/me/avatar", {
 
 ### GET `/api/notifications` — 取得通知列表 🔒
 
-> 需要登入（cookie 中有效的 `token`）。後端會組好通知文字、分類與可操作 action，前端可直接渲染。列表會排除 `dismissed_at` 已有值的通知；一般已讀但尚未 dismissal 的通知仍會回傳，response shape 不變。
+> 需要登入（cookie 中有效的 `token`）。後端會組好通知文字、分類、actor 與可操作 action，前端可直接渲染。列表會排除 `dismissed_at` 已有值的通知；一般已讀但尚未 dismissal 的通知仍會回傳，既有欄位與排序行為不變。
 
 **Response**
 
@@ -576,6 +603,11 @@ const res = await fetch("http://localhost:3000/api/users/me/avatar", {
       "timeText": "10 分鐘前",
       "isRead": false,
       "createdAt": "2026-07-02T00:00:00.000Z",
+      "actor": {
+        "id": "user-a",
+        "displayName": "A",
+        "avatarUrl": "https://example.com/a.png"
+      },
       "reference": {
         "type": "friendship",
         "id": "friendship-id",
@@ -589,15 +621,25 @@ const res = await fetch("http://localhost:3000/api/users/me/avatar", {
 
 **通知類型**
 
-| type                      | category   | message 格式                                          | actions              |
-| ------------------------- | ---------- | ----------------------------------------------------- | -------------------- |
-| `friend_request_created`  | `friend`   | `{requesterName} 向你發送好友邀請`                    | pending 時可接受/拒絕 |
-| `friend_request_accepted` | `friend`   | `{receiverName} 接受了你的好友邀請`                   | 無                   |
-| `activity_created`        | `activity` | `{creatorName} 建立了新活動：{activity}`              | 無                   |
-| `formation_ready`         | `activity` | `「{activity}」人數已滿，請確認成團`                  | 無                   |
-| `time_to_pick`            | `activity` | `「{activity}」候選時段票數不相上下，請選擇最終時段`  | 無                   |
-| `activity_confirmed`      | `activity` | `「{activity}」已確認成團`                            | 無                   |
-| `activity_cancelled`      | `activity` | `「{activity}」已取消`                                | 無                   |
+| type                      | category   | message 格式                                         | actor                | actions              |
+| ------------------------- | ---------- | ---------------------------------------------------- | -------------------- | -------------------- |
+| `friend_request_created`  | `friend`   | `{requesterName} 向你發送好友邀請`                   | friendship requester | pending 時可接受/拒絕 |
+| `friend_request_accepted` | `friend`   | `{receiverName} 接受了你的好友邀請`                  | friendship receiver  | 無                   |
+| `activity_created`        | `activity` | `{creatorName} 建立了新活動：{activity}`             | activity creator     | 無                   |
+| `formation_ready`         | `activity` | `「{activity}」人數已滿，請確認成團`                 | `null`               | 無                   |
+| `time_to_pick`            | `activity` | `「{activity}」候選時段票數不相上下，請選擇最終時段` | `null`               | 無                   |
+| `activity_confirmed`      | `activity` | `「{activity}」已確認成團`                           | `null`               | 無                   |
+| `activity_cancelled`      | `activity` | `「{activity}」已取消`                               | `null`               | 無                   |
+
+**actor 規則**
+
+- 每筆通知固定包含 `actor` 欄位；非 `null` 時只包含 camelCase 的 `id`、`displayName`、`avatarUrl`。
+- `friend_request_created` 的 actor 是 friendship requester；`friend_request_accepted` 的 actor 是 friendship receiver。
+- `activity_created` 的 actor 是 referenced activity creator。
+- requester、receiver 或 activity creator 沒有頭像時仍保留 actor，並回傳 `avatarUrl: null`。
+- friendship reference 遺失或查不到 friendship 時回傳 `actor: null`；通知本身仍會使用既有 fallback message、reference 與 actions 規則回傳。
+- `activity_created` 的 activity reference 遺失、查不到 activity 或 creator 遺失時回傳 `actor: null`，並保留既有活動 fallback message 與 reference。
+- 其他 activity lifecycle notification（`formation_ready`、`time_to_pick`、`activity_confirmed`、`activity_cancelled`）與一般 notification 固定回傳 `actor: null`。
 
 - `formation_ready`：報名人數達到 `participant_target` 時通知建立者（收件人：建立者）。
 - `time_to_pick`：報名截止、活動進入決策緩衝期時通知建立者（收件人：建立者）。

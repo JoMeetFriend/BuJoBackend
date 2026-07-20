@@ -8,6 +8,7 @@ import {
 // 情境 a（日期時間都固定，單一候選時段、免投票）、情境 b（日期固定、候選時段複選投票）、
 // 情境 c（候選日期複選、統一時間）、情境 d（候選日期各自不同時段）皆已支援，皆含到期判定。
 // 候選時段平票時交由建立者裁決（voting 狀態的 confirmFormation），沒有額外的決選投票關卡。
+const ACTIVITY_TITLE_MAX_LENGTH = 15
 
 export async function createActivity(req, res) {
   const {
@@ -22,9 +23,13 @@ export async function createActivity(req, res) {
   const isVotingD = Array.isArray(dateSlots) && dateSlots.length > 0
   const isVotingB = !!singleDate && !startDate && !isVotingC && !isVotingD
   const isVoting = isVotingB || isVotingC || isVotingD
+  const normalizedTitle = typeof title === 'string' ? title.trim() : ''
 
-  if (!title) {
+  if (!normalizedTitle) {
     return res.status(400).json({ message: '活動名稱為必填' })
+  }
+  if (normalizedTitle.length > ACTIVITY_TITLE_MAX_LENGTH) {
+    return res.status(400).json({ message: `活動名稱最多 ${ACTIVITY_TITLE_MAX_LENGTH} 字` })
   }
   if (!deadline) {
     return res.status(400).json({ message: '流團時間為必填' })
@@ -124,7 +129,7 @@ export async function createActivity(req, res) {
     const activity = await prisma.activity.create({
       data: {
         creator_id: creatorId,
-        title,
+        title: normalizedTitle,
         description: note ?? null,
         location: location ?? null,
         category: type ?? null,
@@ -144,7 +149,7 @@ export async function createActivity(req, res) {
           create: { user_id: creatorId },
         },
         chat: {
-          create: { name: title },
+          create: { name: normalizedTitle },
         },
       },
       include: { candidateSlots: true },
@@ -1137,7 +1142,7 @@ function formatCard(act, userId) {
   let time = ''
   if (displaySlot) {
     date = formatShortDate(displaySlot.slot_start)
-    time = displaySlot.all_day ? '整天' : `${formatTime(displaySlot.slot_start)} - ${formatTime(displaySlot.slot_end)}`
+    time = displaySlot.all_day ? '整天' : `${formatHHMM(displaySlot.slot_start)} - ${formatHHMM(displaySlot.slot_end)}`
   } else if (sched?.requires_voting) {
     time = '投票中'
   }
@@ -1182,27 +1187,27 @@ function formatHHMM(date) {
   return `${hour}:${minute}`
 }
 
-function formatTime(date) {
-  const h = date.getHours()
-  const m = date.getMinutes()
-  const period = h < 12 ? '上午' : '下午'
-  const hour = h % 12 || 12
-  return `${period} ${hour}:${String(m).padStart(2, '0')}`
-}
-
 function parseDate(dateStr) {
   const [year, month, day] = dateStr.split('/').map(Number)
   return new Date(year, month - 1, day)
 }
 
+// 過渡期同時接受新格式（HH:MM，24 小時制零填充，格式對齊 formatHHMM 的輸出）跟舊格式
+// （上午/下午 H:MM）——部署順序是後端先支援雙格式、前端再切換成只送新格式，等前端穩定
+// 上線後才移除舊格式分支
 function parseDateTime(dateStr, timeStr) {
   const date = parseDate(dateStr)
-  const match = timeStr.match(/^(上午|下午)\s+(\d+):(\d+)$/)
-  if (!match) return date
-  let hour = Number(match[2])
-  if (match[1] === '下午' && hour !== 12) hour += 12
-  if (match[1] === '上午' && hour === 12) hour = 0
-  date.setHours(hour, Number(match[3]), 0, 0)
+  const newFormatMatch = timeStr.match(/^(\d{2}):(\d{2})$/)
+  if (newFormatMatch) {
+    date.setHours(Number(newFormatMatch[1]), Number(newFormatMatch[2]), 0, 0)
+    return date
+  }
+  const oldFormatMatch = timeStr.match(/^(上午|下午)\s+(\d+):(\d+)$/)
+  if (!oldFormatMatch) return date
+  let hour = Number(oldFormatMatch[2])
+  if (oldFormatMatch[1] === '下午' && hour !== 12) hour += 12
+  if (oldFormatMatch[1] === '上午' && hour === 12) hour = 0
+  date.setHours(hour, Number(oldFormatMatch[3]), 0, 0)
   return date
 }
 

@@ -530,6 +530,310 @@ describe('notificationService', () => {
     })
   })
 
+  describe('notification actor response', () => {
+    const createdAt = new Date('2026-07-16T00:00:00.000Z')
+
+    function makeNotification({
+      id,
+      type,
+      referenceId,
+      referenceType = 'friendship',
+      isRead = false,
+    }) {
+      return {
+        id,
+        user_id: 'user-b',
+        type,
+        reference_id: referenceId,
+        reference_type: referenceType,
+        is_read: isRead,
+        created_at: createdAt,
+        dismissed_at: null,
+      }
+    }
+
+    it('friend_request_created 回傳 requester actor', async () => {
+      prisma.notification.findMany.mockResolvedValue([
+        makeNotification({
+          id: 'notification-1',
+          type: 'friend_request_created',
+          referenceId: 'friendship-1',
+        }),
+      ])
+      prisma.friendship.findMany.mockResolvedValue([
+        {
+          id: 'friendship-1',
+          status: 'pending',
+          requester: {
+            id: 'user-a',
+            display_name: 'A',
+            avatar_url: 'https://example.com/a.png',
+          },
+          receiver: {
+            id: 'user-b',
+            display_name: 'B',
+            avatar_url: null,
+          },
+        },
+      ])
+
+      const result = await listUserNotifications({ userId: 'user-b' })
+
+      expect(result[0].actor).toEqual({
+        id: 'user-a',
+        displayName: 'A',
+        avatarUrl: 'https://example.com/a.png',
+      })
+    })
+
+    it('friend_request_accepted 回傳 receiver actor 並保留 null avatar', async () => {
+      prisma.notification.findMany.mockResolvedValue([
+        makeNotification({
+          id: 'notification-2',
+          type: 'friend_request_accepted',
+          referenceId: 'friendship-1',
+        }),
+      ])
+      prisma.friendship.findMany.mockResolvedValue([
+        {
+          id: 'friendship-1',
+          status: 'accepted',
+          requester: {
+            id: 'user-a',
+            display_name: 'A',
+            avatar_url: 'https://example.com/a.png',
+          },
+          receiver: {
+            id: 'user-b',
+            display_name: 'B',
+            avatar_url: null,
+          },
+        },
+      ])
+
+      const result = await listUserNotifications({ userId: 'user-a' })
+
+      expect(result[0].actor).toEqual({
+        id: 'user-b',
+        displayName: 'B',
+        avatarUrl: null,
+      })
+    })
+
+    it('friendship 遺失時回傳 null actor 並保留 fallback contract', async () => {
+      prisma.notification.findMany.mockResolvedValue([
+        makeNotification({
+          id: 'notification-missing',
+          type: 'friend_request_created',
+          referenceId: 'friendship-missing',
+        }),
+      ])
+      prisma.friendship.findMany.mockResolvedValue([])
+
+      const result = await listUserNotifications({ userId: 'user-b' })
+
+      expect(result[0]).toEqual(expect.objectContaining({
+        actor: null,
+        message: '有人 向你發送好友邀請',
+        reference: {
+          type: 'friendship',
+          id: 'friendship-missing',
+          status: null,
+        },
+        actions: [],
+      }))
+    })
+
+    it('activity_created 回傳 spec example 的 creator actor 且重用單次 activity 查詢', async () => {
+      prisma.notification.findMany.mockResolvedValue([
+        makeNotification({
+          id: 'notification-activity',
+          type: 'activity_created',
+          referenceId: 'activity-1',
+          referenceType: 'activity',
+        }),
+      ])
+      prisma.activity.findUnique.mockResolvedValue({
+        id: 'activity-1',
+        title: '週末野餐',
+        status: 'recruiting',
+        creator: {
+          id: 'user-a',
+          display_name: 'A',
+          avatar_url: 'https://example.com/a.png',
+        },
+      })
+
+      const result = await listUserNotifications({ userId: 'user-b' })
+
+      expect(result[0].actor).toEqual({
+        id: 'user-a',
+        displayName: 'A',
+        avatarUrl: 'https://example.com/a.png',
+      })
+      expect(prisma.activity.findUnique).toHaveBeenCalledTimes(1)
+      expect(prisma.friendship.findMany).not.toHaveBeenCalled()
+      expect(prisma.friendship.findUnique).not.toHaveBeenCalled()
+    })
+
+    it('activity_created creator 沒有頭像時仍回傳 actor 與 null avatar', async () => {
+      prisma.notification.findMany.mockResolvedValue([
+        makeNotification({
+          id: 'notification-activity-null-avatar',
+          type: 'activity_created',
+          referenceId: 'activity-1',
+          referenceType: 'activity',
+        }),
+      ])
+      prisma.activity.findUnique.mockResolvedValue({
+        id: 'activity-1',
+        title: '週末野餐',
+        status: 'recruiting',
+        creator: { id: 'user-a', display_name: 'A', avatar_url: null },
+      })
+
+      const result = await listUserNotifications({ userId: 'user-b' })
+
+      expect(result[0].actor).toEqual({
+        id: 'user-a',
+        displayName: 'A',
+        avatarUrl: null,
+      })
+    })
+
+    it.each([
+      ['reference ID 遺失', null, null],
+      ['activity 查無資料', 'activity-missing', null],
+      [
+        'creator 遺失',
+        'activity-1',
+        {
+          id: 'activity-1',
+          title: '週末野餐',
+          status: 'recruiting',
+          creator: null,
+        },
+      ],
+    ])('activity_created 在%s時回傳 null actor', async (_scenario, referenceId, activity) => {
+      prisma.notification.findMany.mockResolvedValue([
+        makeNotification({
+          id: 'notification-activity-missing-context',
+          type: 'activity_created',
+          referenceId,
+          referenceType: 'activity',
+        }),
+      ])
+      prisma.activity.findUnique.mockResolvedValue(activity)
+
+      const result = await listUserNotifications({ userId: 'user-b' })
+
+      expect(result[0].actor).toBeNull()
+      expect(result[0]).toEqual(expect.objectContaining({
+        message: activity?.title
+          ? '有人 建立了新活動：週末野餐'
+          : '有人 建立了新活動：新活動',
+        actions: [],
+      }))
+    })
+
+    it.each([
+      'formation_ready',
+      'time_to_pick',
+      'activity_confirmed',
+      'activity_cancelled',
+    ])('%s 活動生命週期通知回傳 null actor', async (type) => {
+      prisma.notification.findMany.mockResolvedValue([
+        makeNotification({
+          id: `notification-${type}`,
+          type,
+          referenceId: 'activity-1',
+          referenceType: 'activity',
+        }),
+      ])
+      prisma.activity.findUnique.mockResolvedValue({
+        id: 'activity-1',
+        title: '週末野餐',
+        status: 'voting',
+        creator: { id: 'user-a', display_name: 'A', avatar_url: null },
+      })
+
+      const result = await listUserNotifications({ userId: 'user-b' })
+
+      expect(result[0].actor).toBeNull()
+    })
+
+    it('一般通知回傳 null actor 且不查 friendship', async () => {
+      prisma.notification.findMany.mockResolvedValue([
+        makeNotification({
+          id: 'notification-general',
+          type: 'custom_type',
+          referenceId: null,
+          referenceType: null,
+        }),
+      ])
+
+      const result = await listUserNotifications({ userId: 'user-b' })
+
+      expect(result[0].actor).toBeNull()
+      expect(prisma.friendship.findMany).not.toHaveBeenCalled()
+      expect(prisma.friendship.findUnique).not.toHaveBeenCalled()
+    })
+
+    it('多筆好友通知以去重 IDs 單次批次查詢且 listing 不呼叫 findUnique', async () => {
+      prisma.notification.findMany.mockResolvedValue([
+        makeNotification({
+          id: 'notification-1',
+          type: 'friend_request_created',
+          referenceId: 'friendship-1',
+        }),
+        makeNotification({
+          id: 'notification-2',
+          type: 'friend_request_accepted',
+          referenceId: 'friendship-1',
+        }),
+        makeNotification({
+          id: 'notification-3',
+          type: 'friend_request_created',
+          referenceId: 'friendship-2',
+        }),
+      ])
+      prisma.friendship.findMany.mockResolvedValue([
+        {
+          id: 'friendship-1',
+          status: 'accepted',
+          requester: { id: 'user-a', display_name: 'A', avatar_url: null },
+          receiver: { id: 'user-b', display_name: 'B', avatar_url: null },
+        },
+        {
+          id: 'friendship-2',
+          status: 'pending',
+          requester: { id: 'user-c', display_name: 'C', avatar_url: null },
+          receiver: { id: 'user-b', display_name: 'B', avatar_url: null },
+        },
+      ])
+
+      await listUserNotifications({ userId: 'user-b' })
+
+      expect(prisma.friendship.findMany).toHaveBeenCalledTimes(1)
+      expect(prisma.friendship.findMany).toHaveBeenCalledWith({
+        where: {
+          id: { in: ['friendship-1', 'friendship-2'] },
+        },
+        select: {
+          id: true,
+          status: true,
+          requester: {
+            select: { id: true, display_name: true, avatar_url: true },
+          },
+          receiver: {
+            select: { id: true, display_name: true, avatar_url: true },
+          },
+        },
+      })
+      expect(prisma.friendship.findUnique).not.toHaveBeenCalled()
+    })
+  })
+
   describe('notification dismissal', () => {
     it('listUserNotifications 只查詢未 dismissal 通知且保留一般已讀通知', async () => {
       const createdAt = new Date('2026-07-12T00:00:00.000Z')
