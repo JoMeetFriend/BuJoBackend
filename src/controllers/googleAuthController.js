@@ -9,7 +9,7 @@ export async function googleLink(req, res) {
   const credential = req.body.credential || req.body.token
   const currentUserId = req.user.userId
 
-  if (!credential) return res.status(400).json({ error: '缺少 Google ID Token' })
+  if (!credential) return res.status(400).json({ message: '缺少 Google ID Token' })
 
   try {
     const ticket = await client.verifyIdToken({
@@ -17,7 +17,7 @@ export async function googleLink(req, res) {
       audience: process.env.GOOGLE_CLIENT_ID,
     })
     const payload = ticket.getPayload()
-    if (!payload?.email || payload.email_verified === false) return res.status(401).json({ error: '無法取得使用者資訊' })
+    if (!payload?.email || payload.email_verified === false) return res.status(401).json({ message: '無法取得使用者資訊' })
 
     const existing = await prisma.userIdentity.findUnique({
       where: {
@@ -26,7 +26,7 @@ export async function googleLink(req, res) {
     })
 
     if (existing && existing.user_id !== currentUserId) {
-      return res.status(409).json({ error: '此 Google 帳號已綁定其他帳號' })
+      return res.status(409).json({ message: '此 Google 帳號已綁定其他帳號' })
     }
     if (existing) return res.json({ message: '此 Google 帳號已連結' })
 
@@ -41,7 +41,7 @@ export async function googleLink(req, res) {
     return res.json({ message: 'Google 帳號連結成功' })
   } catch (error) {
     console.error('Google 連結錯誤：', error)
-    return res.status(500).json({ error: '伺服器錯誤' })
+    return res.status(500).json({ message: '伺服器錯誤' })
   }
 }
 
@@ -49,7 +49,7 @@ export async function googleLogin(req, res) {
   const credential = req.body.credential || req.body.token
 
   if (!credential) {
-    return res.status(400).json({ error: '缺少 Google ID Token' })
+    return res.status(400).json({ message: '缺少 Google ID Token' })
   }
 
   try {
@@ -60,7 +60,7 @@ export async function googleLogin(req, res) {
     const payload = ticket.getPayload()
 
     if (!payload?.email || payload.email_verified === false) {
-      return res.status(401).json({ error: '無法取得使用者資訊' })
+      return res.status(401).json({ message: '無法取得使用者資訊' })
     }
 
     const identity = await prisma.userIdentity.findUnique({
@@ -103,6 +103,6 @@ export async function googleLogin(req, res) {
     })
   } catch (error) {
     console.error('Google 登入錯誤：', error)
-    return res.status(500).json({ error: '伺服器錯誤' })
+    return res.status(500).json({ message: '伺服器錯誤' })
   }
 }
