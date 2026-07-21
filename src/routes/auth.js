@@ -1,6 +1,6 @@
 import express from 'express'
 import { signup, login, logout, me, unlinkProvider } from '../controllers/authController.js'
-import { googleLogin, googleLink } from '../controllers/googleAuthController.js'
+import { googleLogin, googleLink, googleCallback } from '../controllers/googleAuthController.js'
 import { lineCallback, lineLogin, lineLink } from '../controllers/lineAuthController.js'
 import authenticate from '../middleware/authenticate.js'
 import { loginLimiter, signupLimiter } from '../middleware/rateLimiter.js'
@@ -151,87 +151,56 @@ router.get('/me', authenticate, me)
 /**
  * @openapi
  * /api/auth/google:
- *   post:
+ *   get:
  *     tags: [Auth]
- *     summary: Google 登入（沒有對應帳號時自動註冊）
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [credential]
- *             properties:
- *               credential: { type: string, description: Google ID Token }
+ *     summary: 開始 Google 登入（302 導向 Google 授權頁）
  *     responses:
- *       200:
- *         description: 登入成功，設置 token cookie
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 user:
- *                   allOf:
- *                     - $ref: '#/components/schemas/PublicUser'
- *                     - type: object
- *                       properties:
- *                         email: { type: string }
- *       400:
- *         description: 缺少 Google ID Token
- *         content:
- *           application/json:
- *             schema: { $ref: '#/components/schemas/ErrorResponse' }
- *       401:
- *         description: 無法取得使用者資訊（email 未驗證）
- *         content:
- *           application/json:
- *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *       302:
+ *         description: 導向 Google 授權頁；建立 user_id=null 的一次性 OAuth attempt
  */
-router.post('/google', loginLimiter, googleLogin)
+router.get('/google', loginLimiter, googleLogin)
 
 /**
  * @openapi
  * /api/auth/google/link:
- *   post:
+ *   get:
  *     tags: [Auth]
- *     summary: 將 Google 帳號連結到目前登入者
+ *     summary: 綁定 Google 帳號（302 導向 Google 授權頁）
  *     security: [{ cookieAuth: [] }]
- *     requestBody:
- *       required: true
- *       content:
- *         application/json:
- *           schema:
- *             type: object
- *             required: [credential]
- *             properties:
- *               credential: { type: string, description: Google ID Token }
  *     responses:
- *       200:
- *         description: 連結成功（或已連結過）
- *         content:
- *           application/json:
- *             schema:
- *               type: object
- *               properties:
- *                 message: { type: string }
- *       400:
- *         description: 缺少 Google ID Token
- *         content:
- *           application/json:
- *             schema: { $ref: '#/components/schemas/ErrorResponse' }
- *       401:
- *         description: 未登入 / 無法取得使用者資訊
- *         content:
- *           application/json:
- *             schema: { $ref: '#/components/schemas/ErrorResponse' }
- *       409:
- *         description: 此 Google 帳號已綁定其他帳號
- *         content:
- *           application/json:
- *             schema: { $ref: '#/components/schemas/ErrorResponse' }
+ *       302:
+ *         description: 以目前登入者 ID 建立一次性 OAuth attempt，導向 Google 授權頁
  */
-router.post('/google/link', authenticate, googleLink)
+router.get('/google/link', authenticate, googleLink)
+
+/**
+ * @openapi
+ * /api/auth/google/callback:
+ *   get:
+ *     tags: [Auth]
+ *     summary: Google OAuth callback（login 或 link，依 OAuth attempt 的 user_id 判斷）
+ *     description: >
+ *       會先驗證並消耗 `state`；缺失、不存在、過期或已消耗的 state 固定導向
+ *       `/login?error=google_login_failed`，且不交換 token、不建立 identity 或簽發 cookie。
+ *       login 成功導向 `/` 並簽發 token cookie；login 取消/失敗導向
+ *       `/login?error=google_cancelled` 或 `/login?error=google_login_failed`。
+ *       link 成功導向 `/profile/edit?linked=google`（不簽發新 cookie）；link 取消/失敗導向
+ *       `/profile/edit?error=google_link_cancelled` 或 `/profile/edit?error=google_link_failed`。
+ *     parameters:
+ *       - in: query
+ *         name: code
+ *         schema: { type: string }
+ *       - in: query
+ *         name: state
+ *         schema: { type: string }
+ *       - in: query
+ *         name: error
+ *         schema: { type: string }
+ *     responses:
+ *       302:
+ *         description: 依 login/link 與成功/取消/失敗導向前端對應頁面
+ */
+router.get('/google/callback', googleCallback)
 
 /**
  * @openapi
