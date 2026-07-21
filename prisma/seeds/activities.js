@@ -56,7 +56,7 @@ function activityData({
 }
 
 /**
- * 建立四種排程模式、三筆成團行事曆活動與一筆取消活動。
+ * 建立排程模式、成團行事曆與取消狀態的 Demo 活動。
  * 所有日期皆以 seed 執行當下的 Asia/Taipei 日期為基準動態產生。
  */
 export async function seedActivities(prisma, users) {
@@ -413,6 +413,125 @@ export async function seedActivities(prisma, users) {
       include: { candidateSlots: { orderBy: { slot_start: "asc" } } },
     });
 
+    const calendarRiversideCycling = await transaction.activity.create({
+      data: activityData({
+        creator: users.bob,
+        title: "河濱單車晨騎",
+        description: "趁著早上涼爽，沿著河濱輕鬆騎一圈。",
+        location: "大佳河濱公園",
+        category: "運動",
+        participantTarget: 5,
+        status: "confirmed",
+        schedule: {
+          requires_voting: false,
+          availability_mode: "slot",
+          deadline_at: at(4, 8),
+          vote_deadline_at: at(3, 20),
+        },
+        candidateSlots: [
+          { slot_start: at(4, 8), slot_end: at(4, 10), all_day: false },
+        ],
+        participants: [users.bob, users.alice, users.dave],
+      }),
+      include: { candidateSlots: { orderBy: { slot_start: "asc" } } },
+    });
+
+    const calendarSunsetCoffeeWalk = await transaction.activity.create({
+      data: activityData({
+        creator: users.carol,
+        title: "黃昏咖啡散步",
+        description: "喝完咖啡後在附近散步，輕鬆聊聊近況。",
+        location: "中山商圈",
+        category: "休閒",
+        participantTarget: 4,
+        status: "confirmed",
+        schedule: {
+          requires_voting: false,
+          availability_mode: "slot",
+          deadline_at: at(4, 16),
+          vote_deadline_at: at(3, 20),
+        },
+        candidateSlots: [
+          { slot_start: at(4, 16), slot_end: at(4, 18), all_day: false },
+        ],
+        participants: [users.carol, users.alice, users.eve],
+      }),
+      include: { candidateSlots: { orderBy: { slot_start: "asc" } } },
+    });
+
+    const calendarAfterWorkGathering = await transaction.activity.create({
+      data: activityData({
+        creator: users.alice,
+        title: "下班小聚",
+        description: "下班後一起吃點東西，為忙碌的一天收尾。",
+        location: "信義區餐酒館",
+        category: "聚餐",
+        participantTarget: 4,
+        status: "confirmed",
+        schedule: {
+          requires_voting: false,
+          availability_mode: "slot",
+          deadline_at: at(6, 19),
+          vote_deadline_at: at(5, 20),
+        },
+        candidateSlots: [
+          { slot_start: at(6, 19), slot_end: at(6, 21), all_day: false },
+        ],
+        participants: [users.alice, users.bob, users.carol],
+      }),
+      include: { candidateSlots: { orderBy: { slot_start: "asc" } } },
+    });
+
+    const calendarJapaneseDinner = await transaction.activity.create({
+      data: activityData({
+        creator: users.bob,
+        title: "日式料理聚餐",
+        description: "一起去嘗試新開的日式料理店。",
+        location: "中山區日式餐廳",
+        category: "聚餐",
+        participantTarget: 5,
+        status: "confirmed",
+        schedule: {
+          requires_voting: false,
+          availability_mode: "slot",
+          deadline_at: at(7, 18, 30),
+          vote_deadline_at: at(6, 20),
+        },
+        candidateSlots: [
+          {
+            slot_start: at(7, 18, 30),
+            slot_end: at(7, 20, 30),
+            all_day: false,
+          },
+        ],
+        participants: [users.bob, users.alice, users.carol, users.dave],
+      }),
+      include: { candidateSlots: { orderBy: { slot_start: "asc" } } },
+    });
+
+    const calendarBreakfastMeetup = await transaction.activity.create({
+      data: activityData({
+        creator: users.carol,
+        title: "早餐交流會",
+        description: "上班前一起吃早餐，交換最近的生活趣事。",
+        location: "台北車站早餐店",
+        category: "聚餐",
+        participantTarget: 4,
+        status: "confirmed",
+        schedule: {
+          requires_voting: false,
+          availability_mode: "slot",
+          deadline_at: at(8, 7, 30),
+          vote_deadline_at: at(7, 20),
+        },
+        candidateSlots: [
+          { slot_start: at(8, 7, 30), slot_end: at(8, 9), all_day: false },
+        ],
+        participants: [users.carol, users.alice, users.eve],
+      }),
+      include: { candidateSlots: { orderBy: { slot_start: "asc" } } },
+    });
+
     for (const activity of [
       fixedConfirmed,
       dateConfirmed,
@@ -421,6 +540,11 @@ export async function seedActivities(prisma, users) {
       calendarTeamLunch,
       calendarBoardGames,
       calendarWeekendBrunch,
+      calendarRiversideCycling,
+      calendarSunsetCoffeeWalk,
+      calendarAfterWorkGathering,
+      calendarJapaneseDinner,
+      calendarBreakfastMeetup,
     ]) {
       await transaction.activitySchedule.update({
         where: { activity_id: activity.id },
@@ -441,6 +565,11 @@ export async function seedActivities(prisma, users) {
       calendarTeamLunch,
       calendarBoardGames,
       calendarWeekendBrunch,
+      calendarRiversideCycling,
+      calendarSunsetCoffeeWalk,
+      calendarAfterWorkGathering,
+      calendarJapaneseDinner,
+      calendarBreakfastMeetup,
     };
   }, { timeout: 30_000 });
 }
