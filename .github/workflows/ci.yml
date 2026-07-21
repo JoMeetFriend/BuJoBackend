@@ -28,6 +28,8 @@ jobs:
       DATABASE_URL: postgresql://postgres:postgres@localhost:5432/bujo_ci?schema=public
       JWT_SECRET: ci-test-secret
       GOOGLE_CLIENT_ID: ci-test-google-client-id
+      GOOGLE_CLIENT_SECRET: ci-test-google-client-secret
+      GOOGLE_CALLBACK_URL: http://localhost:3000/api/auth/google/callback
       FRONTEND_URL: http://localhost:5173
       ALLOWED_ORIGINS: http://localhost:5173
       LINE_CHANNEL_ID: ci-test-line-channel-id
