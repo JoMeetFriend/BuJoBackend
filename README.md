@@ -79,6 +79,11 @@ npm run test:coverage
 
 完整 API 規格（endpoint、request/response 格式、錯誤碼）見 [API_DOCS.md](./API_DOCS.md)。
 
+互動式 Swagger 文件（依程式碼 JSDoc 註解自動產生，可直接在頁面上 Try it out）：
+- 本地：http://localhost:3000/api-docs
+- 正式環境（`main`）：https://api.bujo.live/api-docs
+- 測試環境（`dev`）：https://bujobackend-bkef.onrender.com/api-docs
+
 ## 部署
 
 **正式環境（`main`）**
