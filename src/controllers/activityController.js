@@ -4,6 +4,11 @@ import {
   notifyFriendsActivityCreated,
   sendActivityLifecycleLineNotifications,
 } from "../services/notificationService.js";
+import {
+  syncOnActivityCreated,
+  syncOnActivityJoined,
+  syncOnActivityLeft,
+} from "../services/socketRoomService.js";
 
 // 情境 a（日期時間都固定，單一候選時段、免投票）、情境 b（日期固定、候選時段複選投票）、
 // 情境 c（候選日期複選、統一時間）、情境 d（候選日期各自不同時段）皆已支援，皆含到期判定。
@@ -189,6 +194,8 @@ export async function createActivity(req, res) {
       creatorId,
       activityId: activity.id,
     });
+
+    syncOnActivityCreated(activity.id);
 
     return res.status(201).json({ activity: { id: activity.id } });
   } catch (error) {
@@ -841,6 +848,9 @@ export async function joinActivity(req, res) {
         type: NOTIFICATION_TYPES.FORMATION_READY,
       });
     }
+
+    syncOnActivityJoined(id, userId);
+
     return res.json({ message: "報名成功" });
   } catch (error) {
     console.error("joinActivity 錯誤：", error);
@@ -1146,6 +1156,8 @@ export async function cancelJoin(req, res) {
         where: { activity_id: id, user_id: userId },
       }),
     ]);
+
+    syncOnActivityLeft(id, userId);
 
     return res.json({ message: "已取消報名" });
   } catch (error) {
