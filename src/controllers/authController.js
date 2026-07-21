@@ -115,19 +115,19 @@ export async function unlinkProvider(req, res) {
   const userId = req.user.userId
 
   if (!['local', 'google', 'line'].includes(provider)) {
-    return res.status(400).json({ error: '不支援的登入方式' })
+    return res.status(400).json({ message: '不支援的登入方式' })
   }
 
   try {
     const identities = await prisma.userIdentity.findMany({ where: { user_id: userId } })
 
     if (identities.length <= 1) {
-      return res.status(400).json({ error: '無法解除最後一個登入方式，請先新增其他登入方式' })
+      return res.status(400).json({ message: '無法解除最後一個登入方式，請先新增其他登入方式' })
     }
 
     const target = identities.find((i) => i.provider === provider)
     if (!target) {
-      return res.status(404).json({ error: '該登入方式未連結' })
+      return res.status(404).json({ message: '該登入方式未連結' })
     }
 
     await prisma.userIdentity.delete({ where: { id: target.id } })
