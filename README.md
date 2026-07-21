@@ -81,9 +81,15 @@ npm run test:coverage
 
 ## 部署
 
-- 後端部署於 Render：https://bujo-backend.onrender.com
-- 前端部署於 Vercel：https://bujofe.vercel.app
-- 合併進 `dev` 分支會自動觸發 Render 重新部署
+**正式環境（`main`）**
+- 前端部署於 Vercel：https://bujo.live
+- 後端部署於 Render：https://api.bujo.live
+
+**測試環境（`dev`，共用信箱建置）**
+- 前端部署於 Vercel：https://bu-jo-dev-fe.vercel.app
+- 後端部署於 Render：https://bujobackend-bkef.onrender.com
+
+合併進 `main`／`dev` 分支會自動觸發對應環境的 Render 重新部署。
 
 Render 上需手動設定以下環境變數（正式環境的值，非本地開發值）：
 

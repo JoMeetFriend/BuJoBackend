@@ -1,7 +1,11 @@
 # BuJo Backend — API 文檔
 
+> 互動式 Swagger 文件：伺服器啟動後開啟 `/api-docs`（本地為 `http://localhost:3000/api-docs`），
+> 內容跟著程式碼的 JSDoc 註解自動產生，異動時較不易與實作脫節。本檔案保留完整的商業規則與情境說明。
+
 Base URL：`http://localhost:3000`  
-Production：`https://bujo-backend.onrender.com`
+Production（main）：`https://api.bujo.live`  
+測試版本（dev）：`https://bujobackend-bkef.onrender.com`
 
 > 所有需要登入的 API 均透過 **httpOnly cookie** 驗證，前端不需手動帶 token header，但 fetch / axios 需設定 `credentials: 'include'`。
 
