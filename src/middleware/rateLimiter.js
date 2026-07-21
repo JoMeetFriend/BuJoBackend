@@ -26,3 +26,12 @@ export const placesLimiter = rateLimit({
   legacyHeaders: false,
   keyGenerator: (req) => req.user.userId,
 })
+
+export const chatMessageLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  limit: 30,
+  message: { message: '傳送訊息太頻繁，請稍後再試' },
+  standardHeaders: 'draft-8',
+  legacyHeaders: false,
+  keyGenerator: (req) => `${req.user.userId}:${req.params.id}`,
+})

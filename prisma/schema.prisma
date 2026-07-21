@@ -29,6 +29,7 @@ model User {
   receivedInvitations        ActivityInvitation[]        @relation("InvitationReceived")
   activityParticipants       ActivityParticipant[]
   activityTiebreakVotes      ActivityTiebreakVote[]
+  activityMessages           ActivityMessage[]
 
   @@map("users")
 }
@@ -117,14 +118,30 @@ model Activity {
 }
 
 model ActivityChat {
-  id          String   @id @default(uuid())
-  activity_id String   @unique
-  name        String
-  created_at  DateTime @default(now()) @db.Timestamptz
+  id             String    @id @default(uuid())
+  activity_id    String    @unique
+  name           String
+  last_message_at DateTime? @db.Timestamptz
+  created_at     DateTime  @default(now()) @db.Timestamptz
 
-  activity Activity @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+  activity Activity          @relation(fields: [activity_id], references: [id], onDelete: Cascade)
+  messages ActivityMessage[]
 
   @@map("activity_chats")
+}
+
+model ActivityMessage {
+  id         String   @id @default(uuid())
+  chat_id    String
+  sender_id  String
+  content    String
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  chat   ActivityChat @relation(fields: [chat_id], references: [id], onDelete: Cascade)
+  sender User        @relation(fields: [sender_id], references: [id], onDelete: Cascade)
+
+  @@index([chat_id, created_at])
+  @@map("activity_messages")
 }
 
 enum ActivityParticipantStatus {
