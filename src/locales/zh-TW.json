@@ -1,0 +1,111 @@
+{
+  "common": {
+    "serverError": "伺服器錯誤",
+    "internalServerError": "伺服器內部錯誤",
+    "userNotFound": "用戶不存在"
+  },
+  "auth": {
+    "missingFields": "缺少必要欄位",
+    "invalidEmailFormat": "email 格式不正確",
+    "passwordTooShort": "password 至少需要 8 個字元",
+    "emailAlreadyRegistered": "email 已被註冊",
+    "invalidCredentials": "帳號或密碼錯誤",
+    "loggedOut": "已登出",
+    "unsupportedProvider": "不支援的登入方式",
+    "cannotUnlinkLastProvider": "無法解除最後一個登入方式，請先新增其他登入方式",
+    "providerNotLinked": "該登入方式未連結",
+    "unlinked": "已解除連結",
+    "notLoggedIn": "未登入",
+    "invalidOrExpiredToken": "token 無效或已過期"
+  },
+  "activity": {
+    "titleRequired": "活動名稱為必填",
+    "titleTooLong": "活動名稱最多 {{max}} 字",
+    "deadlineRequired": "流團時間為必填",
+    "uniformTimeOrAllDayRequired": "請設定統一時間或選擇整日",
+    "eachCandidateDateNeedsSlot": "每個候選日期都需要設定時段",
+    "oneSlotPerCandidateDate": "每個候選日期只能設定一組時段",
+    "startDateRequired": "開始日期為必填",
+    "invalidDateFormat": "日期或時間格式不正確",
+    "endMustBeAfterStart": "結束時間必須晚於開始時間",
+    "timeAlreadyPast": "活動時間已經過去，請調整活動時間",
+    "voteDeadlineAfterDecisionDeadline": "報名截止時間不能晚於活動的決策截止時間",
+    "notFound": "活動不存在",
+    "cannotJoinOwnActivity": "不能報名自己建立的活動",
+    "registrationClosed": "此活動已截止報名",
+    "notRecruiting": "此活動不在揪團中",
+    "provideAtLeastOneAvailability": "請提供至少一段可用時間",
+    "availabilityOutOfRange": "提交的可用時間超出建立者設定的時間範圍",
+    "selectAtLeastOneSlot": "請選擇至少一個候選時段",
+    "slotNotFound": "候選時段不存在",
+    "subRangeOutOfSlot": "提交的子區間超出候選時段範圍",
+    "full": "活動人數已滿",
+    "alreadyJoined": "你已報名此活動",
+    "joinSuccess": "報名成功",
+    "notSupported": "此功能尚未支援",
+    "onlyCreatorCanConfirm": "只有創建者可以確認成團",
+    "formationNotAllowedInState": "此活動狀態不允許確認成團",
+    "selectSlotToConfirm": "請選擇要確認的時段",
+    "slotNotConfirmable": "此候選時段不在可確認的名單中",
+    "selectCandidateSlotToConfirm": "請選擇要確認的候選時段",
+    "slotAlreadyPast": "此時段已經過去，請重新選擇",
+    "stateChangedConcurrently": "此活動狀態已被異動，請重新整理後再試",
+    "confirmSuccess": "成團成功",
+    "onlyCreatorCanCancel": "只有創建者可以取消活動",
+    "cannotCancel": "此活動無法取消",
+    "cancelled": "活動已取消",
+    "cannotCancelJoinInState": "此活動狀態不允許取消報名",
+    "notJoined": "你尚未報名此活動",
+    "joinCancelled": "已取消報名"
+  },
+  "friendship": {
+    "missingReceiverId": "缺少 receiver_id",
+    "cannotAddSelf": "不能加自己為好友",
+    "userNotFound": "找不到使用者",
+    "alreadyFriends": "已經是好友",
+    "requestAlreadySent": "已送出好友邀請",
+    "alreadyInvitedByOther": "對方已邀請你",
+    "cannotSendRequest": "目前無法送出好友邀請",
+    "requestSent": "好友邀請已送出",
+    "requestNotFound": "找不到好友邀請",
+    "onlyReceiverCanAccept": "只有被邀請者可以接受好友邀請",
+    "cannotAccept": "此好友邀請無法接受",
+    "accepted": "已接受好友邀請",
+    "onlyReceiverCanReject": "只有被邀請者可以拒絕好友邀請",
+    "cannotReject": "此好友邀請無法拒絕",
+    "rejected": "已拒絕好友邀請",
+    "friendshipNotFound": "找不到該好友關係",
+    "forbidden": "無權操作此好友關係",
+    "cannotRemove": "此狀態無法刪除好友",
+    "removed": "已刪除好友"
+  },
+  "notification": {
+    "notFound": "找不到通知",
+    "pendingFriendRequestCannotDismiss": "待處理的好友邀請無法移除",
+    "dismissed": "已移除通知",
+    "markedRead": "已標記為已讀",
+    "allMarkedRead": "已全部標記為已讀"
+  },
+  "user": {
+    "avatarRequired": "請上傳頭像圖片",
+    "invalidSearchFormat": "無效的搜尋格式",
+    "invalidNameFormat": "無效的名稱格式",
+    "nameCannotBeBlank": "顯示名稱不可為空白",
+    "nameTooLong": "顯示名稱不可超過 50 個字元",
+    "invalidBioFormat": "無效的簡介格式",
+    "bioTooLong": "簡介不可超過 150 個字元"
+  },
+  "places": {
+    "searchUnavailable": "地址搜尋服務暫時無法使用"
+  },
+  "upload": {
+    "avatarTooLarge": "頭像圖片不可超過 2MB",
+    "avatarUploadFailed": "頭像上傳失敗",
+    "avatarInvalidType": "頭像只支援 JPG、PNG 或 WebP 圖片"
+  },
+  "rateLimiter": {
+    "loginTooMany": "登入嘗試次數過多，請 15 分鐘後再試",
+    "signupTooMany": "註冊次數過多，請 1 小時後再試",
+    "searchTooMany": "搜尋太頻繁，請稍後再試"
+  }
+}

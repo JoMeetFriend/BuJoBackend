@@ -3,7 +3,7 @@ import rateLimit from 'express-rate-limit'
 export const loginLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
   limit: 10,
-  message: { message: '登入嘗試次數過多，請 15 分鐘後再試' },
+  message: (req) => ({ message: req.t('rateLimiter.loginTooMany') }),
   standardHeaders: 'draft-8',
   legacyHeaders: false,
 })
@@ -11,7 +11,7 @@ export const loginLimiter = rateLimit({
 export const signupLimiter = rateLimit({
   windowMs: 60 * 60 * 1000,
   limit: 5,
-  message: { message: '註冊次數過多，請 1 小時後再試' },
+  message: (req) => ({ message: req.t('rateLimiter.signupTooMany') }),
   standardHeaders: 'draft-8',
   legacyHeaders: false,
 })
@@ -21,7 +21,7 @@ export const signupLimiter = rateLimit({
 export const placesLimiter = rateLimit({
   windowMs: 60 * 1000,
   limit: 30,
-  message: { message: '搜尋太頻繁，請稍後再試' },
+  message: (req) => ({ message: req.t('rateLimiter.searchTooMany') }),
   standardHeaders: 'draft-8',
   legacyHeaders: false,
   keyGenerator: (req) => req.user.userId,

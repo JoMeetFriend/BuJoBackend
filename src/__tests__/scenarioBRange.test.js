@@ -36,13 +36,14 @@ const {
   cancelJoin,
 } = await import('../controllers/activityController.js')
 const { default: prisma } = await import('../lib/prisma.js')
+const { default: i18next } = await import('../lib/i18n.js')
 
 const CREATOR_ID = 'creator-1'
 const PARTICIPANT_ID = 'participant-1'
 const ACTIVITY_ID = 'activity-1'
 
 function makeReq({ params = { id: ACTIVITY_ID }, body = {}, userId = CREATOR_ID } = {}) {
-  return { params, body, user: { userId } }
+  return { params, body, user: { userId }, t: i18next.getFixedT('zh-TW') }
 }
 
 function makeRes() {

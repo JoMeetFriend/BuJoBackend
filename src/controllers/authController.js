@@ -11,13 +11,13 @@ export async function signup(req, res) {
   const { email, password, display_name } = req.body
 
   if (!email || !password || !display_name) {
-    return res.status(400).json({ message: '缺少必要欄位' })
+    return res.status(400).json({ message: req.t('auth.missingFields') })
   }
   if (!EMAIL_REGEX.test(email)) {
-    return res.status(400).json({ message: 'email 格式不正確' })
+    return res.status(400).json({ message: req.t('auth.invalidEmailFormat') })
   }
   if (password.length < 8) {
-    return res.status(400).json({ message: 'password 至少需要 8 個字元' })
+    return res.status(400).json({ message: req.t('auth.passwordTooShort') })
   }
 
   try {
@@ -25,7 +25,7 @@ export async function signup(req, res) {
       where: { provider: 'local', provider_user_id: email },
     })
     if (existing) {
-      return res.status(409).json({ message: 'email 已被註冊' })
+      return res.status(409).json({ message: req.t('auth.emailAlreadyRegistered') })
     }
 
     const password_hash = await bcrypt.hash(password, 10)
@@ -50,7 +50,7 @@ export async function signup(req, res) {
     return res.status(201).json({ user: { id: user.id, display_name: user.display_name, created_at: user.created_at } })
   } catch (error) {
     console.error('signup 錯誤：', error)
-    return res.status(500).json({ message: '伺服器錯誤' })
+    return res.status(500).json({ message: req.t('common.serverError') })
   }
 }
 
@@ -58,7 +58,7 @@ export async function login(req, res) {
   const { email, password } = req.body
 
   if (!email || !password) {
-    return res.status(400).json({ message: '缺少必要欄位' })
+    return res.status(400).json({ message: req.t('auth.missingFields') })
   }
 
   try {
@@ -67,12 +67,12 @@ export async function login(req, res) {
       include: { user: true },
     })
     if (!identity) {
-      return res.status(401).json({ message: '帳號或密碼錯誤' })
+      return res.status(401).json({ message: req.t('auth.invalidCredentials') })
     }
 
     const valid = await bcrypt.compare(password, identity.password_hash)
     if (!valid) {
-      return res.status(401).json({ message: '帳號或密碼錯誤' })
+      return res.status(401).json({ message: req.t('auth.invalidCredentials') })
     }
 
     const token = signToken(identity.user.id)
@@ -81,13 +81,13 @@ export async function login(req, res) {
     return res.status(200).json({ user: { id: identity.user.id, display_name: identity.user.display_name, avatar_url: identity.user.avatar_url } })
   } catch (error) {
     console.error('login 錯誤：', error)
-    return res.status(500).json({ message: '伺服器錯誤' })
+    return res.status(500).json({ message: req.t('common.serverError') })
   }
 }
 
 export function logout(req, res) {
   res.clearCookie('token', CLEAR_COOKIE_OPTIONS)
-  return res.status(200).json({ message: '已登出' })
+  return res.status(200).json({ message: req.t('auth.loggedOut') })
 }
 
 export async function me(req, res) {
@@ -102,11 +102,11 @@ export async function me(req, res) {
         identities: { select: { provider: true, email: true } },
       },
     })
-    if (!user) return res.status(404).json({ message: '用戶不存在' })
+    if (!user) return res.status(404).json({ message: req.t('common.userNotFound') })
     return res.json({ user })
   } catch (error) {
     console.error('me 錯誤：', error)
-    return res.status(500).json({ message: '伺服器錯誤' })
+    return res.status(500).json({ message: req.t('common.serverError') })
   }
 }
 
@@ -115,25 +115,25 @@ export async function unlinkProvider(req, res) {
   const userId = req.user.userId
 
   if (!['local', 'google', 'line'].includes(provider)) {
-    return res.status(400).json({ message: '不支援的登入方式' })
+    return res.status(400).json({ message: req.t('auth.unsupportedProvider') })
   }
 
   try {
     const identities = await prisma.userIdentity.findMany({ where: { user_id: userId } })
 
     if (identities.length <= 1) {
-      return res.status(400).json({ message: '無法解除最後一個登入方式，請先新增其他登入方式' })
+      return res.status(400).json({ message: req.t('auth.cannotUnlinkLastProvider') })
     }
 
     const target = identities.find((i) => i.provider === provider)
     if (!target) {
-      return res.status(404).json({ message: '該登入方式未連結' })
+      return res.status(404).json({ message: req.t('auth.providerNotLinked') })
     }
 
     await prisma.userIdentity.delete({ where: { id: target.id } })
-    return res.json({ message: '已解除連結' })
+    return res.json({ message: req.t('auth.unlinked') })
   } catch (error) {
     console.error('unlink 錯誤：', error)
-    return res.status(500).json({ message: '伺服器錯誤' })
+    return res.status(500).json({ message: req.t('common.serverError') })
   }
 }

@@ -1,0 +1,111 @@
+{
+  "common": {
+    "serverError": "Server error",
+    "internalServerError": "Internal server error",
+    "userNotFound": "User not found"
+  },
+  "auth": {
+    "missingFields": "Missing required fields",
+    "invalidEmailFormat": "Invalid email format",
+    "passwordTooShort": "Password must be at least 8 characters",
+    "emailAlreadyRegistered": "Email is already registered",
+    "invalidCredentials": "Incorrect account or password",
+    "loggedOut": "Logged out",
+    "unsupportedProvider": "Unsupported login method",
+    "cannotUnlinkLastProvider": "Cannot unlink the last login method, please add another login method first",
+    "providerNotLinked": "This login method is not linked",
+    "unlinked": "Unlinked",
+    "notLoggedIn": "Not logged in",
+    "invalidOrExpiredToken": "Token is invalid or has expired"
+  },
+  "activity": {
+    "titleRequired": "Activity title is required",
+    "titleTooLong": "Activity title can be at most {{max}} characters",
+    "deadlineRequired": "Deadline is required",
+    "uniformTimeOrAllDayRequired": "Please set a uniform time or choose all day",
+    "eachCandidateDateNeedsSlot": "Each candidate date needs a time slot",
+    "oneSlotPerCandidateDate": "Each candidate date can only have one time slot",
+    "startDateRequired": "Start date is required",
+    "invalidDateFormat": "Invalid date or time format",
+    "endMustBeAfterStart": "End time must be after start time",
+    "timeAlreadyPast": "The activity time has already passed, please adjust the activity time",
+    "voteDeadlineAfterDecisionDeadline": "The registration deadline cannot be later than the activity's decision deadline",
+    "notFound": "Activity does not exist",
+    "cannotJoinOwnActivity": "You cannot join an activity you created",
+    "registrationClosed": "Registration for this activity is closed",
+    "notRecruiting": "This activity is not currently recruiting",
+    "provideAtLeastOneAvailability": "Please provide at least one available time range",
+    "availabilityOutOfRange": "The submitted available time is outside the range set by the creator",
+    "selectAtLeastOneSlot": "Please select at least one candidate time slot",
+    "slotNotFound": "Candidate time slot does not exist",
+    "subRangeOutOfSlot": "The submitted sub-range is outside the candidate time slot range",
+    "full": "The activity is full",
+    "alreadyJoined": "You have already joined this activity",
+    "joinSuccess": "Joined successfully",
+    "notSupported": "This feature is not yet supported",
+    "onlyCreatorCanConfirm": "Only the creator can confirm formation",
+    "formationNotAllowedInState": "This activity's status does not allow confirming formation",
+    "selectSlotToConfirm": "Please select a time slot to confirm",
+    "slotNotConfirmable": "This candidate time slot is not in the confirmable list",
+    "selectCandidateSlotToConfirm": "Please select a candidate time slot to confirm",
+    "slotAlreadyPast": "This time slot has already passed, please choose again",
+    "stateChangedConcurrently": "This activity's status has changed, please refresh and try again",
+    "confirmSuccess": "Formation confirmed successfully",
+    "onlyCreatorCanCancel": "Only the creator can cancel the activity",
+    "cannotCancel": "This activity cannot be cancelled",
+    "cancelled": "The activity has been cancelled",
+    "cannotCancelJoinInState": "This activity's status does not allow cancelling registration",
+    "notJoined": "You have not joined this activity",
+    "joinCancelled": "Registration cancelled"
+  },
+  "friendship": {
+    "missingReceiverId": "Missing receiver_id",
+    "cannotAddSelf": "You cannot add yourself as a friend",
+    "userNotFound": "User not found",
+    "alreadyFriends": "Already friends",
+    "requestAlreadySent": "Friend request already sent",
+    "alreadyInvitedByOther": "The other person has already invited you",
+    "cannotSendRequest": "Cannot send a friend request right now",
+    "requestSent": "Friend request sent",
+    "requestNotFound": "Friend request not found",
+    "onlyReceiverCanAccept": "Only the invitee can accept the friend request",
+    "cannotAccept": "This friend request cannot be accepted",
+    "accepted": "Friend request accepted",
+    "onlyReceiverCanReject": "Only the invitee can reject the friend request",
+    "cannotReject": "This friend request cannot be rejected",
+    "rejected": "Friend request rejected",
+    "friendshipNotFound": "Friendship not found",
+    "forbidden": "You do not have permission to operate on this friendship",
+    "cannotRemove": "Cannot remove friend in this state",
+    "removed": "Friend removed"
+  },
+  "notification": {
+    "notFound": "Notification not found",
+    "pendingFriendRequestCannotDismiss": "Pending friend requests cannot be dismissed",
+    "dismissed": "Notification dismissed",
+    "markedRead": "Marked as read",
+    "allMarkedRead": "All marked as read"
+  },
+  "user": {
+    "avatarRequired": "Please upload an avatar image",
+    "invalidSearchFormat": "Invalid search format",
+    "invalidNameFormat": "Invalid name format",
+    "nameCannotBeBlank": "Display name cannot be blank",
+    "nameTooLong": "Display name cannot exceed 50 characters",
+    "invalidBioFormat": "Invalid bio format",
+    "bioTooLong": "Bio cannot exceed 150 characters"
+  },
+  "places": {
+    "searchUnavailable": "The address search service is temporarily unavailable"
+  },
+  "upload": {
+    "avatarTooLarge": "Avatar image cannot exceed 2MB",
+    "avatarUploadFailed": "Avatar upload failed",
+    "avatarInvalidType": "Avatar only supports JPG, PNG, or WebP images"
+  },
+  "rateLimiter": {
+    "loginTooMany": "Too many login attempts, please try again in 15 minutes",
+    "signupTooMany": "Too many signup attempts, please try again in 1 hour",
+    "searchTooMany": "Too many searches, please try again later"
+  }
+}

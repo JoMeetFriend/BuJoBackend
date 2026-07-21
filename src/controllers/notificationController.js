@@ -14,17 +14,17 @@ export async function dismissNotification(req, res) {
     });
 
     if (outcome === "not_found") {
-      return res.status(404).json({ message: "找不到通知" });
+      return res.status(404).json({ message: req.t("notification.notFound") });
     }
 
     if (outcome === "pending_friend_request") {
-      return res.status(409).json({ message: "待處理的好友邀請無法移除" });
+      return res.status(409).json({ message: req.t("notification.pendingFriendRequestCannotDismiss") });
     }
 
-    return res.json({ message: "已移除通知" });
+    return res.json({ message: req.t("notification.dismissed") });
   } catch (error) {
     console.error("dismissNotification 錯誤：", error);
-    return res.status(500).json({ message: "伺服器錯誤" });
+    return res.status(500).json({ message: req.t("common.serverError") });
   }
 }
 
@@ -37,7 +37,7 @@ export async function listNotifications(req, res) {
     return res.json({ notifications });
   } catch (error) {
     console.error("listNotifications 錯誤：", error);
-    return res.status(500).json({ message: "伺服器錯誤" });
+    return res.status(500).json({ message: req.t("common.serverError") });
   }
 }
 
@@ -49,13 +49,13 @@ export async function markRead(req, res) {
     });
 
     if (result.count === 0) {
-      return res.status(404).json({ message: "找不到通知" });
+      return res.status(404).json({ message: req.t("notification.notFound") });
     }
 
-    return res.json({ message: "已標記為已讀" });
+    return res.json({ message: req.t("notification.markedRead") });
   } catch (error) {
     console.error("markRead 錯誤：", error);
-    return res.status(500).json({ message: "伺服器錯誤" });
+    return res.status(500).json({ message: req.t("common.serverError") });
   }
 }
 
@@ -66,12 +66,12 @@ export async function markAllRead(req, res) {
     });
 
     return res.json({
-      message: "已全部標記為已讀",
+      message: req.t("notification.allMarkedRead"),
       count: result.count,
     });
   } catch (error) {
     console.error("markAllRead 錯誤：", error);
-    return res.status(500).json({ message: "伺服器錯誤" });
+    return res.status(500).json({ message: req.t("common.serverError") });
   }
 }
 
@@ -84,6 +84,6 @@ export async function getUnreadCount(req, res) {
     return res.json({ unreadCount: count });
   } catch (error) {
     console.error("getUnreadCount 錯誤：", error);
-    return res.status(500).json({ message: "伺服器錯誤" });
+    return res.status(500).json({ message: req.t("common.serverError") });
   }
 }
