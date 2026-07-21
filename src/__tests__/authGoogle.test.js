@@ -99,7 +99,7 @@ describe('POST /api/auth/google', () => {
       .send({ token: 'invalid-token' })
 
     expect(res.status).toBe(401)
-    expect(res.body.error).toBe('無法取得使用者資訊')
+    expect(res.body.message).toBe('無法取得使用者資訊')
   })
 
   test('Google ID token 驗證噴錯 → 回傳 500', async () => {
@@ -110,6 +110,6 @@ describe('POST /api/auth/google', () => {
       .send({ token: 'any-token' })
 
     expect(res.status).toBe(500)
-    expect(res.body.error).toBe('伺服器錯誤')
+    expect(res.body.message).toBe('伺服器錯誤')
   })
 })

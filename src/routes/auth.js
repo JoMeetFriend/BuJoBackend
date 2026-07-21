@@ -154,8 +154,6 @@ router.get('/me', authenticate, me)
  *   post:
  *     tags: [Auth]
  *     summary: Google 登入（沒有對應帳號時自動註冊）
- *     description: >
- *       注意：這個 endpoint 的錯誤回應格式是 `{ error }`，不是本 API 其他地方統一使用的 `{ message }`。
  *     requestBody:
  *       required: true
  *       content:
@@ -183,16 +181,12 @@ router.get('/me', authenticate, me)
  *         description: 缺少 Google ID Token
  *         content:
  *           application/json:
- *             schema:
- *               type: object
- *               properties: { error: { type: string } }
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
  *       401:
  *         description: 無法取得使用者資訊（email 未驗證）
  *         content:
  *           application/json:
- *             schema:
- *               type: object
- *               properties: { error: { type: string } }
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
  */
 router.post('/google', loginLimiter, googleLogin)
 
@@ -202,8 +196,6 @@ router.post('/google', loginLimiter, googleLogin)
  *   post:
  *     tags: [Auth]
  *     summary: 將 Google 帳號連結到目前登入者
- *     description: >
- *       注意：這個 endpoint 的錯誤回應格式是 `{ error }`，不是本 API 其他地方統一使用的 `{ message }`。
  *     security: [{ cookieAuth: [] }]
  *     requestBody:
  *       required: true
@@ -221,28 +213,23 @@ router.post('/google', loginLimiter, googleLogin)
  *           application/json:
  *             schema:
  *               type: object
- *               properties: { message: { type: string } }
+ *               properties:
+ *                 message: { type: string }
  *       400:
  *         description: 缺少 Google ID Token
  *         content:
  *           application/json:
- *             schema:
- *               type: object
- *               properties: { error: { type: string } }
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
  *       401:
  *         description: 未登入 / 無法取得使用者資訊
  *         content:
  *           application/json:
- *             schema:
- *               type: object
- *               properties: { error: { type: string } }
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
  *       409:
  *         description: 此 Google 帳號已綁定其他帳號
  *         content:
  *           application/json:
- *             schema:
- *               type: object
- *               properties: { error: { type: string } }
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
  */
 router.post('/google/link', authenticate, googleLink)
 
@@ -306,8 +293,6 @@ router.get('/line/callback', lineCallback)
  *   delete:
  *     tags: [Auth]
  *     summary: 解除第三方登入方式的連結
- *     description: >
- *       注意：這個 endpoint 的錯誤回應格式是 `{ error }`，不是本 API 其他地方統一使用的 `{ message }`。
  *     security: [{ cookieAuth: [] }]
  *     parameters:
  *       - in: path
@@ -321,21 +306,18 @@ router.get('/line/callback', lineCallback)
  *           application/json:
  *             schema:
  *               type: object
- *               properties: { message: { type: string } }
+ *               properties:
+ *                 message: { type: string }
  *       400:
  *         description: 不支援的登入方式 / 無法解除最後一個登入方式，請先新增其他登入方式
  *         content:
  *           application/json:
- *             schema:
- *               type: object
- *               properties: { error: { type: string } }
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
  *       404:
  *         description: 該登入方式未連結
  *         content:
  *           application/json:
- *             schema:
- *               type: object
- *               properties: { error: { type: string } }
+ *             schema: { $ref: '#/components/schemas/ErrorResponse' }
  */
 router.delete('/:provider/unlink', authenticate, unlinkProvider)
 
