@@ -9,9 +9,9 @@ const users = {
   eve: { id: "user-eve" },
 };
 
-const now = new Date("2026-07-14T12:00:00.000Z");
+const now = new Date("2026-07-21T12:00:00.000Z");
 const taipeiAt = (day, hour, minute = 0) =>
-  new Date(Date.UTC(2026, 6, 14 + day, hour - 8, minute));
+  new Date(Date.UTC(2026, 6, 21 + day, hour - 8, minute));
 
 function createPrismaMock() {
   let activitySequence = 0;
@@ -59,7 +59,7 @@ describe("seedActivities", () => {
     jest.useRealTimers();
   });
 
-  it("在單一 transaction 建立十二筆活動並回傳固定 key", async () => {
+  it("在單一 transaction 建立十七筆活動並回傳固定 key", async () => {
     const { prisma, transaction } = createPrismaMock();
 
     const result = await seedActivities(prisma, users);
@@ -68,7 +68,7 @@ describe("seedActivities", () => {
     expect(prisma.$transaction).toHaveBeenCalledWith(expect.any(Function), {
       timeout: 30_000,
     });
-    expect(transaction.activity.create).toHaveBeenCalledTimes(12);
+    expect(transaction.activity.create).toHaveBeenCalledTimes(17);
     expect(Object.keys(result)).toEqual([
       "fixedRecruiting",
       "rangeVoting",
@@ -82,9 +82,14 @@ describe("seedActivities", () => {
       "calendarTeamLunch",
       "calendarBoardGames",
       "calendarWeekendBrunch",
+      "calendarRiversideCycling",
+      "calendarSunsetCoffeeWalk",
+      "calendarAfterWorkGathering",
+      "calendarJapaneseDinner",
+      "calendarBreakfastMeetup",
     ]);
     expect(Object.values(result).map(({ id }) => id)).toEqual(
-      Array.from({ length: 12 }, (_, index) => `activity-${index + 1}`),
+      Array.from({ length: 17 }, (_, index) => `activity-${index + 1}`),
     );
   });
 
@@ -223,7 +228,7 @@ describe("seedActivities", () => {
       ]);
   });
 
-  it("七筆 confirmed 活動都連到第一個候選時段，且同日活動由看展排在 KTV 前", async () => {
+  it("十二筆 confirmed 活動都連到第一個候選時段，且同日活動由看展排在 KTV 前", async () => {
     const { prisma, transaction } = createPrismaMock();
 
     await seedActivities(prisma, users);
@@ -271,6 +276,36 @@ describe("seedActivities", () => {
           data: { confirmed_slot_id: "activity-12-slot-1" },
         },
       ],
+      [
+        {
+          where: { activity_id: "activity-13" },
+          data: { confirmed_slot_id: "activity-13-slot-1" },
+        },
+      ],
+      [
+        {
+          where: { activity_id: "activity-14" },
+          data: { confirmed_slot_id: "activity-14-slot-1" },
+        },
+      ],
+      [
+        {
+          where: { activity_id: "activity-15" },
+          data: { confirmed_slot_id: "activity-15-slot-1" },
+        },
+      ],
+      [
+        {
+          where: { activity_id: "activity-16" },
+          data: { confirmed_slot_id: "activity-16-slot-1" },
+        },
+      ],
+      [
+        {
+          where: { activity_id: "activity-17" },
+          data: { confirmed_slot_id: "activity-17-slot-1" },
+        },
+      ],
     ]);
 
     const exhibition = createdActivityData(transaction, "週末看展");
@@ -299,6 +334,106 @@ describe("seedActivities", () => {
       expect(activity.status).toBe("confirmed");
       expect(activity.participants.create).toContainEqual({ user_id: users.alice.id });
       expect(activity.candidateSlots.create[0].slot_start).toEqual(slotStart);
+    }
+  });
+
+  it("Alice 在 seed 日後第 4 至第 8 天有 2、1、1、1、2 筆 confirmed 月曆活動", async () => {
+    const { prisma, transaction } = createPrismaMock();
+
+    await seedActivities(prisma, users);
+
+    const windowStart = taipeiAt(4, 0);
+    const windowEnd = taipeiAt(9, 0);
+    const confirmedStarts = transaction.activity.create.mock.calls
+      .map(([{ data }]) => data)
+      .filter(({ status, candidateSlots }) => {
+        const slotStart = candidateSlots.create[0]?.slot_start;
+        return (
+          status === "confirmed" &&
+          slotStart >= windowStart &&
+          slotStart < windowEnd
+        );
+      })
+      .map(({ candidateSlots }) => candidateSlots.create[0].slot_start)
+      .sort((a, b) => a - b);
+
+    expect(confirmedStarts).toEqual([
+      taipeiAt(4, 8),
+      taipeiAt(4, 16),
+      taipeiAt(5, 12),
+      taipeiAt(6, 19),
+      taipeiAt(7, 18, 30),
+      taipeiAt(8, 7, 30),
+      taipeiAt(8, 19),
+    ]);
+  });
+
+  it("新增五筆已成團活動的建立者、Alice 參與、時段與 confirmed slot 關聯正確", async () => {
+    const { prisma, transaction } = createPrismaMock();
+
+    await seedActivities(prisma, users);
+
+    const expectedActivities = [
+      {
+        title: "河濱單車晨騎",
+        creatorId: users.bob.id,
+        slotStart: taipeiAt(4, 8),
+        slotEnd: taipeiAt(4, 10),
+      },
+      {
+        title: "黃昏咖啡散步",
+        creatorId: users.carol.id,
+        slotStart: taipeiAt(4, 16),
+        slotEnd: taipeiAt(4, 18),
+      },
+      {
+        title: "下班小聚",
+        creatorId: users.alice.id,
+        slotStart: taipeiAt(6, 19),
+        slotEnd: taipeiAt(6, 21),
+      },
+      {
+        title: "日式料理聚餐",
+        creatorId: users.bob.id,
+        slotStart: taipeiAt(7, 18, 30),
+        slotEnd: taipeiAt(7, 20, 30),
+      },
+      {
+        title: "早餐交流會",
+        creatorId: users.carol.id,
+        slotStart: taipeiAt(8, 7, 30),
+        slotEnd: taipeiAt(8, 9),
+      },
+    ];
+
+    for (const expected of expectedActivities) {
+      const createCallIndex = transaction.activity.create.mock.calls.findIndex(
+        ([{ data }]) => data.title === expected.title,
+      );
+      const activity = createdActivityData(transaction, expected.title);
+
+      expect(activity).toMatchObject({
+        creator_id: expected.creatorId,
+        status: "confirmed",
+        participants: {
+          create: expect.arrayContaining([{ user_id: users.alice.id }]),
+        },
+        candidateSlots: {
+          create: [
+            {
+              slot_start: expected.slotStart,
+              slot_end: expected.slotEnd,
+              all_day: false,
+            },
+          ],
+        },
+      });
+
+      const activityNumber = createCallIndex + 1;
+      expect(transaction.activitySchedule.update).toHaveBeenCalledWith({
+        where: { activity_id: `activity-${activityNumber}` },
+        data: { confirmed_slot_id: `activity-${activityNumber}-slot-1` },
+      });
     }
   });
 

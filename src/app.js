@@ -3,7 +3,9 @@ import "express-async-errors";
 import express from "express";
 import cors from "cors";
 import cookieParser from "cookie-parser";
+import swaggerUi from "swagger-ui-express";
 import { fileURLToPath } from "node:url";
+import swaggerSpec from "./docs/swaggerSpec.js";
 import authRoutes from "./routes/auth.js";
 import friendshipRoutes from "./routes/friendships.js";
 import activityRoutes from "./routes/activities.js";
@@ -43,6 +45,11 @@ app.use(
 app.get("/", (req, res) => {
   res.json({ message: "Bujo backend is running" });
 });
+
+app.get("/api-docs.json", (req, res) => {
+  res.json(swaggerSpec);
+});
+app.use("/api-docs", swaggerUi.serve, swaggerUi.setup(swaggerSpec));
 
 app.use("/api/auth", authRoutes);
 app.use("/api/friendships", friendshipRoutes);
