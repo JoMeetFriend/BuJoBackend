@@ -147,6 +147,33 @@ Production（main）：`https://api.bujo.live`
 
 ---
 
+### GET `/api/auth/google` — 開始 Google 登入
+
+後端建立 `user_id = null` 的一次性 OAuth attempt，導向 Google 授權頁。
+
+### GET `/api/auth/google/link` — 綁定 Google 帳號 🔒
+
+> 需要登入（cookie 中有效的 `token`）
+
+後端以目前登入者 ID 建立一次性 OAuth attempt，導向 Google 授權頁。
+
+### GET `/api/auth/google/callback` — Google OAuth callback
+
+callback 會先驗證並消耗 `state`，再由 OAuth attempt 的 `user_id` 判斷 login 或 link；query string 不可自行指定 mode。缺失、不存在、過期或已消耗的 state 固定導向 `/login?error=google_login_failed`，且不交換 token、不建立 identity 或簽發 cookie。
+
+| Mode  | 結果 | 前端 redirect | Cookie / identity 行為 |
+| ----- | ---- | ------------- | ---------------------- |
+| login | 成功 | `/` | 建立或取得使用者並簽發 `token` cookie |
+| login | 取消 | `/login?error=google_cancelled` | 不簽發 cookie |
+| login | 失敗 | `/login?error=google_login_failed` | 不簽發 cookie |
+| link | 成功 | `/profile/edit?linked=google` | 綁定 attempt 指定的使用者，不簽發新 cookie |
+| link | 取消 | `/profile/edit?error=google_link_cancelled` | 不建立 identity、不回登入頁 |
+| link | 失敗或 Google identity 已屬其他帳號 | `/profile/edit?error=google_link_failed` | 不建立、移動或複製 identity，不回登入頁 |
+
+> **BREAKING**：Google 登入/連結已改為跟 LINE 相同的後端 OAuth redirect 流程。舊的 `POST /api/auth/google`、`POST /api/auth/google/link`（前端直接帶 Google ID Token credential、後端回傳 JSON）已移除，不再回傳 `{ user }` 或任何 JSON 錯誤訊息——三個 endpoint 一律是 302 redirect，前端需比照 LINE 登入改成 `window.location.href` 導頁，並改從 redirect 後的 URL query（`?error=...`、`?linked=google`）判斷結果。
+
+---
+
 ### GET `/api/auth/line` — 開始 LINE 登入
 
 後端建立 `user_id = null` 的一次性 OAuth attempt，並以 `bot_prompt=normal` 導向 LINE 授權頁。
