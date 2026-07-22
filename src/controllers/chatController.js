@@ -11,10 +11,10 @@ export async function createMessage(req, res) {
   const userId = req.user.userId;
   const { content } = req.body;
 
-  if (!content || typeof content !== "string") {
+  if (typeof content !== "string" || content.length === 0) {
     return res.status(400).json({ message: "content 為必填" });
   }
-  if (content.length < 1 || content.length > 2000) {
+  if (content.length > 2000) {
     return res
       .status(400)
       .json({ message: "content 長度需在 1-2000 字元之間" });
@@ -42,7 +42,9 @@ export async function createMessage(req, res) {
       created_at: message.created_at,
     });
   } catch (err) {
-    // Socket.io not initialized in test — ignore
+    if (err.message !== "Socket.io not initialized") {
+      console.error("Socket.IO emit failed:", err);
+    }
   }
 
   res.status(201).json(message);

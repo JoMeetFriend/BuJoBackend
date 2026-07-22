@@ -1115,6 +1115,8 @@ export async function cancelActivity(req, res) {
       type: NOTIFICATION_TYPES.ACTIVITY_CANCELLED,
     });
 
+    activity.participants.forEach((p) => syncOnActivityLeft(id, p.user_id));
+
     return res.json({ message: "活動已取消" });
   } catch (error) {
     console.error("cancelActivity 錯誤：", error);

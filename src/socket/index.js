@@ -54,8 +54,6 @@ export function initSocket(httpServer) {
         .map((p) => p.activity.chat?.id)
         .filter(Boolean);
 
-      if (chatIds.length === 0) return next(new Error("無可加入的聊天室"));
-
       for (const chatId of chatIds) {
         socket.join(chatId);
       }
