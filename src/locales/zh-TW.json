@@ -26,6 +26,7 @@
     "eachCandidateDateNeedsSlot": "每個候選日期都需要設定時段",
     "oneSlotPerCandidateDate": "每個候選日期只能設定一組時段",
     "startDateRequired": "開始日期為必填",
+    "endDateMustMatchStartDate": "結束日期必須跟開始日期相同",
     "invalidDateFormat": "日期或時間格式不正確",
     "endMustBeAfterStart": "結束時間必須晚於開始時間",
     "timeAlreadyPast": "活動時間已經過去，請調整活動時間",
