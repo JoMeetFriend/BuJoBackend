@@ -32,6 +32,7 @@ export async function listNotifications(req, res) {
   try {
     const notifications = await listUserNotifications({
       userId: req.user.userId,
+      t: req.t,
     });
 
     return res.json({ notifications });

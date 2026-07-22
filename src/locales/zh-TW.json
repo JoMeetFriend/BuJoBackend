@@ -84,7 +84,8 @@
     "pendingFriendRequestCannotDismiss": "待處理的好友邀請無法移除",
     "dismissed": "已移除通知",
     "markedRead": "已標記為已讀",
-    "allMarkedRead": "已全部標記為已讀"
+    "allMarkedRead": "已全部標記為已讀",
+    "generic": "你有一則新通知"
   },
   "user": {
     "avatarRequired": "請上傳頭像圖片",

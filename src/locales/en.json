@@ -84,7 +84,8 @@
     "pendingFriendRequestCannotDismiss": "Pending friend requests cannot be dismissed",
     "dismissed": "Notification dismissed",
     "markedRead": "Marked as read",
-    "allMarkedRead": "All marked as read"
+    "allMarkedRead": "All marked as read",
+    "generic": "You have a new notification"
   },
   "user": {
     "avatarRequired": "Please upload an avatar image",
