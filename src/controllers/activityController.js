@@ -101,6 +101,13 @@ export async function createActivity(req, res) {
     if (!startDate) {
       return res.status(400).json({ message: req.t("activity.startDateRequired") });
     }
+    // 情境一是單一固定日期，只有時間有範圍——endDate 缺省時 buildFixedSlot() 會 fallback 成
+    // startDate，這裡只需要擋「明確帶了跟 startDate 不同的 endDate」，避免繞過前端直接打
+    // API 建出橫跨多天的候選時段（前端已經拿掉了讓 endDate 獨立於 startDate 的介面，這裡是
+    // 公開 API 的第二層防禦，比照第 132-133 行「不能只靠前端擋」的既定原則）
+    if (endDate && endDate !== startDate) {
+      return res.status(400).json({ message: req.t("activity.endDateMustMatchStartDate") });
+    }
     const { slotStart, slotEnd } = buildFixedSlot(
       startDate,
       startTime,

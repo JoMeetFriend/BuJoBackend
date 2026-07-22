@@ -26,6 +26,7 @@
     "eachCandidateDateNeedsSlot": "Each candidate date needs a time slot",
     "oneSlotPerCandidateDate": "Each candidate date can only have one time slot",
     "startDateRequired": "Start date is required",
+    "endDateMustMatchStartDate": "End date must match start date",
     "invalidDateFormat": "Invalid date or time format",
     "endMustBeAfterStart": "End time must be after start time",
     "timeAlreadyPast": "The activity time has already passed, please adjust the activity time",
