@@ -85,7 +85,24 @@
     "dismissed": "已移除通知",
     "markedRead": "已標記為已讀",
     "allMarkedRead": "已全部標記為已讀",
-    "generic": "你有一則新通知"
+    "generic": "你有一則新通知",
+    "someone": "有人",
+    "theOtherPerson": "對方",
+    "newActivity": "新活動",
+    "friendRequestCreated": "{{name}} 向你發送好友邀請",
+    "friendRequestAccepted": "{{name}} 接受了你的好友邀請",
+    "activityCreated": "{{creatorName}} 建立了新活動：{{activityTitle}}",
+    "activityConfirmed": "「{{activityTitle}}」已確認成團",
+    "activityCancelled": "「{{activityTitle}}」已取消",
+    "timeToPick": "「{{activityTitle}}」候選時段票數不相上下，請選擇最終時段",
+    "formationReady": "「{{activityTitle}}」人數已滿，請確認成團",
+    "timeJustNow": "剛剛",
+    "timeMinutesAgo": "{{count}} 分鐘前",
+    "timeHoursAgo": "{{count}} 小時前",
+    "timeDaysAgo": "{{count}} 天前"
+  },
+  "lineMessage": {
+    "friendRequestCreated": "{{name}} 邀請你成為好友，快去 BuJo 看看吧！"
   },
   "user": {
     "avatarRequired": "請上傳頭像圖片",

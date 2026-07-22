@@ -85,7 +85,24 @@
     "dismissed": "Notification dismissed",
     "markedRead": "Marked as read",
     "allMarkedRead": "All marked as read",
-    "generic": "You have a new notification"
+    "generic": "You have a new notification",
+    "someone": "Someone",
+    "theOtherPerson": "The other person",
+    "newActivity": "New activity",
+    "friendRequestCreated": "{{name}} sent you a friend request",
+    "friendRequestAccepted": "{{name}} accepted your friend request",
+    "activityCreated": "{{creatorName}} created a new activity: {{activityTitle}}",
+    "activityConfirmed": "\"{{activityTitle}}\" is confirmed",
+    "activityCancelled": "\"{{activityTitle}}\" has been cancelled",
+    "timeToPick": "\"{{activityTitle}}\" candidate time slots are tied, please choose the final time",
+    "formationReady": "\"{{activityTitle}}\" has reached its participant target, please confirm formation",
+    "timeJustNow": "Just now",
+    "timeMinutesAgo": "{{count}} minutes ago",
+    "timeHoursAgo": "{{count}} hours ago",
+    "timeDaysAgo": "{{count}} days ago"
+  },
+  "lineMessage": {
+    "friendRequestCreated": "{{name}} invited you to be friends on BuJo, check it out!"
   },
   "user": {
     "avatarRequired": "Please upload an avatar image",
