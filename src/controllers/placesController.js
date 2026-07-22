@@ -11,7 +11,7 @@ export async function autocompleteAddress(req, res) {
 
   if (result.status !== 'ok') {
     console.error('LocationIQ 地址搜尋失敗：', result)
-    return res.status(502).json({ message: '地址搜尋服務暫時無法使用' })
+    return res.status(502).json({ message: req.t('places.searchUnavailable') })
   }
 
   res.json({ results: result.results })

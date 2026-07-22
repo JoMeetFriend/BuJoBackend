@@ -35,14 +35,14 @@ export const uploadAvatar = (req, res, next) => {
 
     if (error instanceof multer.MulterError) {
       if (error.code === "LIMIT_FILE_SIZE") {
-        return res.status(413).json({ message: "頭像圖片不可超過 2MB" });
+        return res.status(413).json({ message: req.t("upload.avatarTooLarge") });
       }
 
-      return res.status(400).json({ message: "頭像上傳失敗" });
+      return res.status(400).json({ message: req.t("upload.avatarUploadFailed") });
     }
 
     if (error.code === "INVALID_AVATAR_FILE_TYPE") {
-      return res.status(400).json({ message: "頭像只支援 JPG、PNG 或 WebP 圖片" });
+      return res.status(400).json({ message: req.t("upload.avatarInvalidType") });
     }
 
     next(error);

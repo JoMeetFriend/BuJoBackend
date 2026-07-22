@@ -281,7 +281,7 @@ export async function sendActivityLifecycleLineNotifications(
   );
 }
 
-export async function listUserNotifications({ userId }, db = prisma) {
+export async function listUserNotifications({ userId, t }, db = prisma) {
   if (!userId) {
     throw new Error("userId is required");
   }
@@ -331,7 +331,7 @@ export async function listUserNotifications({ userId }, db = prisma) {
 
   return Promise.all(
     notifications.map((notification) =>
-      formatNotification(notification, db, friendshipsById),
+      formatNotification(notification, db, friendshipsById, t),
     ),
   );
 }
@@ -442,7 +442,7 @@ export async function countUnreadNotifications({ userId }, db = prisma) {
   });
 }
 
-async function formatNotification(notification, db, friendshipsById) {
+async function formatNotification(notification, db, friendshipsById, t) {
   if (notification.reference_type === NOTIFICATION_REFERENCE_TYPES.FRIENDSHIP) {
     return formatFriendshipNotification(notification, friendshipsById);
   }
@@ -453,7 +453,7 @@ async function formatNotification(notification, db, friendshipsById) {
 
   return buildNotificationResponse(notification, {
     category: "general",
-    message: "你有一則新通知",
+    message: t ? t("notification.generic") : "你有一則新通知",
     reference: {
       type: notification.reference_type,
       id: notification.reference_id,

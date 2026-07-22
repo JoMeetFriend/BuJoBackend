@@ -24,11 +24,13 @@ const {
 } = await import("../controllers/friendshipController.js");
 const { default: friendshipRoutes } = await import("../routes/friendships.js");
 const { default: prisma } = await import("../lib/prisma.js");
+const { default: i18next } = await import("../lib/i18n.js");
 
 function makeReq(body = {}, userId = "user-a") {
   return {
     user: { userId },
     body,
+    t: i18next.getFixedT("zh-TW"),
   };
 }
 
@@ -279,7 +281,7 @@ describe("acceptFriendship", () => {
     prisma.friendship.findUnique.mockResolvedValue(null);
 
     await acceptFriendship(
-      { params: { id: "friendship-1" }, user: { userId: "user-b" } },
+      { params: { id: "friendship-1" }, user: { userId: "user-b" }, t: i18next.getFixedT("zh-TW") },
       res,
     );
 
@@ -297,7 +299,7 @@ describe("acceptFriendship", () => {
     });
 
     await acceptFriendship(
-      { params: { id: "friendship-1" }, user: { userId: "user-c" } },
+      { params: { id: "friendship-1" }, user: { userId: "user-c" }, t: i18next.getFixedT("zh-TW") },
       res,
     );
 
@@ -317,7 +319,7 @@ describe("acceptFriendship", () => {
     });
 
     await acceptFriendship(
-      { params: { id: "friendship-1" }, user: { userId: "user-b" } },
+      { params: { id: "friendship-1" }, user: { userId: "user-b" }, t: i18next.getFixedT("zh-TW") },
       res,
     );
 
@@ -343,7 +345,7 @@ describe("acceptFriendship", () => {
     prisma.friendship.update.mockResolvedValue(updatedFriendship);
 
     await acceptFriendship(
-      { params: { id: "friendship-1" }, user: { userId: "user-b" } },
+      { params: { id: "friendship-1" }, user: { userId: "user-b" }, t: i18next.getFixedT("zh-TW") },
       res,
     );
 
@@ -384,7 +386,7 @@ describe("錯誤處理：資料庫拋出例外時不能讓 request 直接 crash"
     prisma.friendship.findUnique.mockRejectedValue(new Error("db down"));
 
     await acceptFriendship(
-      { params: { id: "friendship-1" }, user: { userId: "user-b" } },
+      { params: { id: "friendship-1" }, user: { userId: "user-b" }, t: i18next.getFixedT("zh-TW") },
       res,
     );
 
@@ -397,7 +399,7 @@ describe("錯誤處理：資料庫拋出例外時不能讓 request 直接 crash"
     prisma.friendship.findUnique.mockRejectedValue(new Error("db down"));
 
     await rejectFriendship(
-      { params: { id: "friendship-1" }, user: { userId: "user-b" } },
+      { params: { id: "friendship-1" }, user: { userId: "user-b" }, t: i18next.getFixedT("zh-TW") },
       res,
     );
 
@@ -412,7 +414,7 @@ describe("rejectFriendship", () => {
     prisma.friendship.findUnique.mockResolvedValue(null);
 
     await rejectFriendship(
-      { params: { id: "friendship-1" }, user: { userId: "user-b" } },
+      { params: { id: "friendship-1" }, user: { userId: "user-b" }, t: i18next.getFixedT("zh-TW") },
       res,
     );
 
@@ -430,7 +432,7 @@ describe("rejectFriendship", () => {
     });
 
     await rejectFriendship(
-      { params: { id: "friendship-1" }, user: { userId: "user-c" } },
+      { params: { id: "friendship-1" }, user: { userId: "user-c" }, t: i18next.getFixedT("zh-TW") },
       res,
     );
 
@@ -450,7 +452,7 @@ describe("rejectFriendship", () => {
     });
 
     await rejectFriendship(
-      { params: { id: "friendship-1" }, user: { userId: "user-b" } },
+      { params: { id: "friendship-1" }, user: { userId: "user-b" }, t: i18next.getFixedT("zh-TW") },
       res,
     );
 
@@ -476,7 +478,7 @@ describe("rejectFriendship", () => {
     prisma.friendship.update.mockResolvedValue(updatedFriendship);
 
     await rejectFriendship(
-      { params: { id: "friendship-1" }, user: { userId: "user-b" } },
+      { params: { id: "friendship-1" }, user: { userId: "user-b" }, t: i18next.getFixedT("zh-TW") },
       res,
     );
 
@@ -499,7 +501,7 @@ describe("removeFriendship", () => {
     prisma.friendship.findUnique.mockResolvedValue(null);
 
     await removeFriendship(
-      { params: { id: "friendship-1" }, user: { userId: "user-a" } },
+      { params: { id: "friendship-1" }, user: { userId: "user-a" }, t: i18next.getFixedT("zh-TW") },
       res,
     );
 
@@ -517,7 +519,7 @@ describe("removeFriendship", () => {
     });
 
     await removeFriendship(
-      { params: { id: "friendship-1" }, user: { userId: "user-c" } },
+      { params: { id: "friendship-1" }, user: { userId: "user-c" }, t: i18next.getFixedT("zh-TW") },
       res,
     );
 
@@ -535,7 +537,7 @@ describe("removeFriendship", () => {
     });
 
     await removeFriendship(
-      { params: { id: "friendship-1" }, user: { userId: "user-a" } },
+      { params: { id: "friendship-1" }, user: { userId: "user-a" }, t: i18next.getFixedT("zh-TW") },
       res,
     );
 
@@ -559,7 +561,7 @@ describe("removeFriendship", () => {
     prisma.friendship.update.mockResolvedValue(updatedFriendship);
 
     await removeFriendship(
-      { params: { id: "friendship-1" }, user: { userId: "user-a" } },
+      { params: { id: "friendship-1" }, user: { userId: "user-a" }, t: i18next.getFixedT("zh-TW") },
       res,
     );
 
@@ -579,7 +581,7 @@ describe("removeFriendship", () => {
     prisma.friendship.findUnique.mockRejectedValue(new Error("db error"));
 
     await removeFriendship(
-      { params: { id: "friendship-1" }, user: { userId: "user-a" } },
+      { params: { id: "friendship-1" }, user: { userId: "user-a" }, t: i18next.getFixedT("zh-TW") },
       res,
     );
 
