@@ -956,3 +956,114 @@ const res = await fetch("http://localhost:3000/api/users/me/avatar", {
 ### 人數滿額不再自動成團
 
 > **BREAKING**：`POST /api/activities/:id/join` 讓報名人數達到 `participant_target` 時，四個情境皆不再自動把活動狀態設為 `confirmed`，一律轉為 `voting`（決策緩衝狀態）並發送 `formation_ready` 通知給建立者（`time_to_pick` 保留給報名截止進入決策期的情境），最終成團一律要建立者手動呼叫 `POST /api/activities/:id/confirm-formation`。
+
+---
+
+## 活動聊天室 Chat
+
+### Socket.io 即時連線
+
+後端在 `server.listen` 時一併啟動 Socket.io 服務。連線時會從 `cookie` 自動解析 JWT 並查詢使用者已加入的活動，自動加入對應的聊天室房間。前端不需手動 emit join 事件。
+
+**連線 URL**：與 REST API 同主機／埠
+
+**Socket Event — 伺服器 → 用戶端**
+
+| 事件              | 說明                     | Payload                                                                 |
+| ----------------- | ------------------------ | ----------------------------------------------------------------------- |
+| `chat:new_message` | 新訊息廣播（所有同房成員） | `{ id, chat_id, sender: { id, display_name, avatar_url }, content, created_at }` |
+
+---
+
+### POST `/api/activities/:id/messages` — 傳送訊息
+
+需要登入，且僅限活動的 joined 參與者。
+
+**Rate Limit**：30 次 / 15 分鐘（以 `userId:activityId` 計算）
+
+**Request Body**
+
+| 欄位      | 類型   | 必填 | 說明             |
+| --------- | ------ | ---- | ---------------- |
+| `content` | string | ✅   | 長度 1–2000 字元 |
+
+```json
+{
+  "content": "明天幾點集合？"
+}
+```
+
+**Response**
+
+| 狀態碼 | 說明                     |
+| ------ | ------------------------ |
+| `201`  | 傳送成功，回傳訊息物件   |
+| `400`  | content 格式不正確       |
+| `403`  | 你不是此活動的參與者     |
+| `404`  | 活動或聊天室不存在       |
+| `429`  | 傳送訊息太頻繁           |
+
+```json
+// 201
+{
+  "id": "uuid",
+  "chat_id": "uuid",
+  "sender_id": "uuid",
+  "content": "明天幾點集合？",
+  "created_at": "2026-07-21T10:00:00.000Z",
+  "sender": {
+    "id": "uuid",
+    "display_name": "小明",
+    "avatar_url": null
+  }
+}
+```
+
+```json
+// 403
+{ "message": "你不是此活動的參與者" }
+```
+
+---
+
+### GET `/api/activities/:id/messages` — 取得歷史訊息
+
+需要登入，且僅限活動的 joined 參與者。
+
+**Query Parameters**
+
+| 參數     | 類型   | 必填 | 預設 | 說明                                              |
+| -------- | ------ | ---- | ---- | ------------------------------------------------- |
+| `before` | string | 否   | —    | ISO8601 時間，回傳比此時間更舊的訊息（cursor）     |
+| `limit`  | number | 否   | 20   | 單頁筆數（1–100）                                 |
+
+**Response**
+
+| 狀態碼 | 說明                   |
+| ------ | ---------------------- |
+| `200`  | 成功，回傳分頁結果     |
+| `403`  | 你不是此活動的參與者   |
+| `404`  | 活動或聊天室不存在     |
+
+```json
+// 200
+{
+  "data": [
+    {
+      "id": "uuid",
+      "chat_id": "uuid",
+      "sender_id": "uuid",
+      "content": "明天幾點集合？",
+      "created_at": "2026-07-21T10:00:00.000Z",
+      "sender": {
+        "id": "uuid",
+        "display_name": "小明",
+        "avatar_url": null
+      }
+    }
+  ],
+  "next_cursor": "2026-07-21T09:59:00.000Z"
+}
+```
+
+首次請求不帶 `before` 參數即取得最新訊息。若有 `next_cursor`，將其值帶入下一次請求的 `before` 參數即可取得下一頁（更舊的訊息）。

@@ -57,7 +57,9 @@
     "cancelled": "活動已取消",
     "cannotCancelJoinInState": "此活動狀態不允許取消報名",
     "notJoined": "你尚未報名此活動",
-    "joinCancelled": "已取消報名"
+    "joinCancelled": "已取消報名",
+    "allDay": "整天",
+    "votingInProgress": "投票中"
   },
   "friendship": {
     "missingReceiverId": "缺少 receiver_id",
@@ -122,9 +124,20 @@
     "avatarUploadFailed": "頭像上傳失敗",
     "avatarInvalidType": "頭像只支援 JPG、PNG 或 WebP 圖片"
   },
+  "socket": {
+    "notLoggedIn": "未登入",
+    "authFailed": "驗證失敗"
+  },
+  "chat": {
+    "contentRequired": "content 為必填",
+    "contentLengthInvalid": "content 長度需在 1-2000 字元之間",
+    "notParticipant": "你不是此活動的參與者",
+    "noChatRoom": "此活動無聊天室"
+  },
   "rateLimiter": {
     "loginTooMany": "登入嘗試次數過多，請 15 分鐘後再試",
     "signupTooMany": "註冊次數過多，請 1 小時後再試",
-    "searchTooMany": "搜尋太頻繁，請稍後再試"
+    "searchTooMany": "搜尋太頻繁，請稍後再試",
+    "chatTooMany": "傳送訊息太頻繁，請稍後再試"
   }
 }

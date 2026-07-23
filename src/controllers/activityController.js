@@ -4,6 +4,11 @@ import {
   notifyFriendsActivityCreated,
   sendActivityLifecycleLineNotifications,
 } from "../services/notificationService.js";
+import {
+  syncOnActivityCreated,
+  syncOnActivityJoined,
+  syncOnActivityLeft,
+} from "../services/socketRoomService.js";
 
 // 情境 a（日期時間都固定，單一候選時段、免投票）、情境 b（日期固定、候選時段複選投票）、
 // 情境 c（候選日期複選、統一時間）、情境 d（候選日期各自不同時段）皆已支援，皆含到期判定。
@@ -197,6 +202,8 @@ export async function createActivity(req, res) {
       activityId: activity.id,
     });
 
+    syncOnActivityCreated(activity.id);
+
     return res.status(201).json({ activity: { id: activity.id } });
   } catch (error) {
     console.error("createActivity 錯誤：", error);
@@ -266,7 +273,7 @@ export async function listActivities(req, res) {
     });
 
     return res.json({
-      activities: activities.map((act) => formatCard(act, userId)),
+      activities: activities.map((act) => formatCard(act, userId, req)),
     });
   } catch (error) {
     console.error("listActivities 錯誤：", error);
@@ -848,6 +855,9 @@ export async function joinActivity(req, res) {
         type: NOTIFICATION_TYPES.FORMATION_READY,
       });
     }
+
+    syncOnActivityJoined(id, userId);
+
     return res.json({ message: req.t("activity.joinSuccess") });
   } catch (error) {
     console.error("joinActivity 錯誤：", error);
@@ -1112,6 +1122,9 @@ export async function cancelActivity(req, res) {
       type: NOTIFICATION_TYPES.ACTIVITY_CANCELLED,
     });
 
+
+    activity.participants.forEach((p) => syncOnActivityLeft(id, p.user_id));
+
     return res.json({ message: req.t("activity.cancelled") });
   } catch (error) {
     console.error("cancelActivity 錯誤：", error);
@@ -1153,6 +1166,9 @@ export async function cancelJoin(req, res) {
         where: { activity_id: id, user_id: userId },
       }),
     ]);
+
+
+    syncOnActivityLeft(id, userId);
 
     return res.json({ message: req.t("activity.joinCancelled") });
   } catch (error) {
@@ -1366,7 +1382,7 @@ export function collectOverlappingCoParticipants(
   return [...seen.values()];
 }
 
-function formatCard(act, userId) {
+function formatCard(act, userId, { t } = { t: (s) => s }) {
   const sched = act.schedule;
   const confirmedSlot = sched?.confirmedSlot ?? null;
   const displaySlot =
@@ -1380,10 +1396,10 @@ function formatCard(act, userId) {
   if (displaySlot) {
     date = formatShortDate(displaySlot.slot_start);
     time = displaySlot.all_day
-      ? "整天"
+      ? t("activity.allDay")
       : `${formatHHMM(displaySlot.slot_start)} - ${formatHHMM(displaySlot.slot_end)}`;
   } else if (sched?.requires_voting) {
-    time = "投票中";
+    time = t("activity.votingInProgress");
   }
 
   return {
