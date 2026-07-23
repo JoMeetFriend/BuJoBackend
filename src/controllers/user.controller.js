@@ -6,7 +6,7 @@ import {
 
 export const updateMyAvatar = async (req, res) => {
   if (!req.file) {
-    return res.status(400).json({ message: "請上傳頭像圖片" });
+    return res.status(400).json({ message: req.t("user.avatarRequired") });
   }
 
   const currentUserId = req.user.userId;
@@ -15,7 +15,7 @@ export const updateMyAvatar = async (req, res) => {
   try {
     const currentUser = await userService.findUserAvatarById(currentUserId);
     if (!currentUser) {
-      return res.status(404).json({ message: "用戶不存在" });
+      return res.status(404).json({ message: req.t("common.userNotFound") });
     }
 
     uploadedAvatar = await uploadAvatarImage(req.file);
@@ -45,7 +45,7 @@ export const updateMyAvatar = async (req, res) => {
     }
 
     console.error("Update Avatar Controller Error:", error);
-    return res.status(500).json({ message: "伺服器內部錯誤" });
+    return res.status(500).json({ message: req.t("common.internalServerError") });
   }
 };
 
@@ -55,7 +55,7 @@ export const searchUsers = async (req, res) => {
     const currentUserId = req.user.userId;
 
     if (!q || typeof q !== "string" || !/^[a-fA-F0-9]{5}$/.test(q)) {
-      return res.status(400).json({ message: "無效的搜尋格式" });
+      return res.status(400).json({ message: req.t("user.invalidSearchFormat") });
     }
 
     const sanitizedQ = q.toLowerCase();
@@ -68,7 +68,7 @@ export const searchUsers = async (req, res) => {
     res.status(200).json(users);
   } catch (error) {
     console.error("Search Users Controller Error:", error);
-    res.status(500).json({ message: "伺服器內部錯誤" });
+    res.status(500).json({ message: req.t("common.internalServerError") });
   }
 };
 
@@ -78,16 +78,16 @@ export const updateMyName = async (req, res) => {
     const currentUserId = req.user.userId;
 
     if (display_name === undefined || typeof display_name !== "string") {
-      return res.status(400).json({ message: "無效的名稱格式" });
+      return res.status(400).json({ message: req.t("user.invalidNameFormat") });
     }
 
     const trimmedName = display_name.trim();
 
     if (trimmedName.length === 0) {
-      return res.status(400).json({ message: "顯示名稱不可為空白" });
+      return res.status(400).json({ message: req.t("user.nameCannotBeBlank") });
     }
     if (trimmedName.length > 50) {
-      return res.status(400).json({ message: "顯示名稱不可超過 50 個字元" });
+      return res.status(400).json({ message: req.t("user.nameTooLong") });
     }
 
     const user = await userService.updateUserName(currentUserId, trimmedName);
@@ -95,7 +95,7 @@ export const updateMyName = async (req, res) => {
     return res.status(200).json({ user });
   } catch (error) {
     console.error("Update Name Controller Error:", error);
-    return res.status(500).json({ message: "伺服器內部錯誤" });
+    return res.status(500).json({ message: req.t("common.internalServerError") });
   }
 };
 
@@ -105,13 +105,13 @@ export const updateMyBio = async (req, res) => {
     const currentUserId = req.user.userId;
 
     if (bio === undefined || typeof bio !== "string") {
-      return res.status(400).json({ message: "無效的簡介格式" });
+      return res.status(400).json({ message: req.t("user.invalidBioFormat") });
     }
 
     const trimmedBio = bio.trim();
 
     if (trimmedBio.length > 150) {
-      return res.status(400).json({ message: "簡介不可超過 150 個字元" });
+      return res.status(400).json({ message: req.t("user.bioTooLong") });
     }
 
     const user = await userService.updateUserBio(currentUserId, trimmedBio);
@@ -123,6 +123,6 @@ export const updateMyBio = async (req, res) => {
     return res.status(200).json({ user });
   } catch (error) {
     console.error("Update Bio Controller Error:", error);
-    return res.status(500).json({ message: "伺服器內部錯誤" });
+    return res.status(500).json({ message: req.t("common.internalServerError") });
   }
 };

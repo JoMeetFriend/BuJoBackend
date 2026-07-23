@@ -8,9 +8,10 @@ jest.unstable_mockModule("../services/placesService.js", () => ({
 
 const { autocompleteAddress } = await import("../controllers/placesController.js");
 const { default: placesRoutes } = await import("../routes/places.js");
+const { default: i18next } = await import("../lib/i18n.js");
 
 function makeReq(query = {}) {
-  return { query };
+  return { query, t: i18next.getFixedT("zh-TW") };
 }
 
 function makeRes() {

@@ -6,6 +6,6 @@ export const getFriends = async (req, res) => {
     return res.status(200).json(friendsList);
   } catch (error) {
     console.error("Get Friends Controller Error:", error);
-    return res.status(500).json({ message: "伺服器內部錯誤" });
+    return res.status(500).json({ message: req.t("common.internalServerError") });
   }
 };

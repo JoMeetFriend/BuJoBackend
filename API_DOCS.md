@@ -416,46 +416,6 @@ const res = await fetch("http://localhost:3000/api/users/me/avatar", {
 
 ```
 
-### POST `/api/friends/request` — 發送好友請求 🔒
-
-> 需要登入（cookie 中有效的 `token`）
-
-**Request Body**
-
-| 欄位        | 類型   | 必填 | 說明           |
-| ----------- | ------ | ---- | -------------- |
-| `target_id` | string | ✅   | 對方的 User ID |
-
-**Response**
-
-| 狀態碼 | 說明                        |
-| ------ | --------------------------- |
-| `201`  | 請求發送成功                |
-| `400`  | 缺少欄位 / 不能加自己為好友 |
-| `401`  | 未登入 / token 無效或已過期 |
-| `404`  | 找不到目標使用者            |
-| `409`  | 已經是好友或已發送過請求    |
-
-```json
-// 201 成功
-{ "message": "好友請求已發送" }
-
-// 400
-{ "message": "不能加自己為好友" }
-
-// 400
-{ "message": "缺少目標使用者 ID" }
-
-// 401
-{ "message": "未登入" }
-
-// 404
-{ "message": "找不到目標使用者" }
-
-// 409 衝突
-{ "message": "已經是好友或已發送過請求" }
-```
-
 ### POST `/api/friendships/request` — 發送好友邀請並通知對方 🔒
 
 > 需要登入（cookie 中有效的 `token`）。A 邀請 B 時，會建立 `pending` friendship，並建立給 B 的 `friend_request_created` 站內通知。若 B 有 LINE Login identity、LINE 通知偏好未關閉，且 `LINE_PUSH_ENABLED=true`，後端會用 LINE Official Account 的 Messaging API 嘗試推播同一則通知。
