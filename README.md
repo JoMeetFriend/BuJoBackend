@@ -90,7 +90,7 @@ npm run test:coverage
 互動式 Swagger 文件（依程式碼 JSDoc 註解自動產生，可直接在頁面上 Try it out）：
 - 本地：http://localhost:3000/api-docs
 - 正式環境（`main`）：https://api.bujo.live/api-docs
-- 測試環境（`dev`）：https://bujobackend-bkef.onrender.com/api-docs
+- 測試環境（`dev`）：https://bujobackend-gnfd.onrender.com/api-docs
 
 ## 部署
 
@@ -98,9 +98,9 @@ npm run test:coverage
 - 前端部署於 Vercel：https://bujo.live
 - 後端部署於 Render：https://api.bujo.live
 
-**測試環境（`dev`，共用信箱建置）**
-- 前端部署於 Vercel：https://bu-jo-dev-fe.vercel.app
-- 後端部署於 Render：https://bujobackend-bkef.onrender.com
+**測試環境（`dev`）**
+- 前端部署於 Vercel：https://bu-jo-inky.vercel.app
+- 後端部署於 Render：https://bujobackend-gnfd.onrender.com
 
 合併進 `main`／`dev` 分支會自動觸發對應環境的 Render 重新部署。
 

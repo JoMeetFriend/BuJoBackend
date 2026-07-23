@@ -5,7 +5,7 @@
 
 Base URL：`http://localhost:3000`  
 Production（main）：`https://api.bujo.live`  
-測試版本（dev）：`https://bujobackend-bkef.onrender.com`
+測試版本（dev）：`https://bujobackend-gnfd.onrender.com`
 
 > 所有需要登入的 API 均透過 **httpOnly cookie** 驗證，前端不需手動帶 token header，但 fetch / axios 需設定 `credentials: 'include'`。
 

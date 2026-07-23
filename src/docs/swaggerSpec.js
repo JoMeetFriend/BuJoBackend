@@ -25,7 +25,7 @@ const swaggerSpec = swaggerJsdoc({
       { url: `http://localhost:${PORT}`, description: "本地開發" },
       { url: "https://api.bujo.live", description: "Production（main）" },
       {
-        url: "https://bujobackend-bkef.onrender.com",
+        url: "https://bujobackend-gnfd.onrender.com",
         description: "測試版本（dev）",
       },
     ],
