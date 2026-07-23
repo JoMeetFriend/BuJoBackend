@@ -64,6 +64,7 @@ const {
 const { default: prisma } = await import("../lib/prisma.js");
 const { sendLinePushMessage } =
   await import("../services/lineMessagingService.js");
+const { default: i18next } = await import("../lib/i18n.js");
 
 const CREATOR_ID = "creator-1";
 const PARTICIPANT_ID = "participant-1";
@@ -74,7 +75,7 @@ function makeReq({
   body = {},
   userId = CREATOR_ID,
 } = {}) {
-  return { params, body, user: { userId } };
+  return { params, body, user: { userId }, t: i18next.getFixedT("zh-TW") };
 }
 
 function makeRes() {
@@ -102,18 +103,19 @@ function makeParticipant(userId, overrides = {}) {
   };
 }
 
+const validFixedBody = {
+  deadline: new Date("2026-07-31T00:00:00Z").toISOString(),
+  startDate: "2026/08/01",
+  startTime: "上午 9:00",
+  endDate: "2026/08/01",
+  endTime: "上午 10:00",
+};
+
 describe("createActivity - 活動名稱長度驗證", () => {
   beforeEach(() => {
     jest.clearAllMocks();
   });
 
-  const validFixedBody = {
-    deadline: new Date("2026-07-31T00:00:00Z").toISOString(),
-    startDate: "2026/08/01",
-    startTime: "上午 9:00",
-    endDate: "2026/08/01",
-    endTime: "上午 10:00",
-  };
 
   it.each([
     ["缺少 title", undefined],
@@ -164,6 +166,48 @@ describe("createActivity - 活動名稱長度驗證", () => {
         }),
       }),
     );
+  });
+});
+
+describe("createActivity - 情境一（單一固定日期）endDate 必須等於 startDate", () => {
+  beforeEach(() => {
+    jest.clearAllMocks();
+  });
+
+  it("endDate 跟 startDate 不同時回 400，且不建立任何 Activity/ActivitySchedule/ActivityCandidateSlot 記錄", async () => {
+    const req = makeReq({
+      body: { ...validFixedBody, title: "測試活動", endDate: "2026/08/04" },
+    });
+    const res = makeRes();
+
+    await createActivity(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(400);
+    expect(res.json).toHaveBeenCalledWith({ message: "結束日期必須跟開始日期相同" });
+    expect(prisma.activity.create).not.toHaveBeenCalled();
+  });
+
+  it("endDate 缺省時視為合法，沿用 startDate", async () => {
+    prisma.activity.create.mockResolvedValue({ id: ACTIVITY_ID, candidateSlots: [] });
+    const { endDate, ...bodyWithoutEndDate } = validFixedBody;
+    const req = makeReq({ body: { ...bodyWithoutEndDate, title: "測試活動" } });
+    const res = makeRes();
+
+    await createActivity(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(prisma.activity.create).toHaveBeenCalled();
+  });
+
+  it("endDate 等於 startDate 時視為合法", async () => {
+    prisma.activity.create.mockResolvedValue({ id: ACTIVITY_ID, candidateSlots: [] });
+    const req = makeReq({ body: { ...validFixedBody, title: "測試活動" } });
+    const res = makeRes();
+
+    await createActivity(req, res);
+
+    expect(res.status).toHaveBeenCalledWith(201);
+    expect(prisma.activity.create).toHaveBeenCalled();
   });
 });
 

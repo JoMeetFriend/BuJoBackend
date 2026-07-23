@@ -6,6 +6,7 @@ import cookieParser from "cookie-parser";
 import swaggerUi from "swagger-ui-express";
 import { fileURLToPath } from "node:url";
 import swaggerSpec from "./docs/swaggerSpec.js";
+import { i18nMiddleware } from "./lib/i18n.js";
 import authRoutes from "./routes/auth.js";
 import friendshipRoutes from "./routes/friendships.js";
 import activityRoutes from "./routes/activities.js";
@@ -37,6 +38,7 @@ app.use(cors({
 }))
 app.use(express.json())
 app.use(cookieParser())
+app.use(i18nMiddleware)
 app.use(
   "/uploads",
   express.static(fileURLToPath(new URL("../uploads", import.meta.url))),
@@ -62,7 +64,7 @@ app.use("/api/activities", chatRoutes);
 
 app.use((err, req, res, next) => {
   console.error("未攔截的例外：", err);
-  res.status(500).json({ message: "伺服器錯誤" });
+  res.status(500).json({ message: req.t("common.serverError") });
 });
 
 export default app

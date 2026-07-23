@@ -27,11 +27,13 @@ const {
 } = await import("../controllers/notificationController.js");
 const { default: notificationRoutes } = await import("../routes/notifications.js");
 const { default: prisma } = await import("../lib/prisma.js");
+const { default: i18next } = await import("../lib/i18n.js");
 
 function makeReq({ userId = "user-b", params = {} } = {}) {
   return {
     user: { userId },
     params,
+    t: i18next.getFixedT("zh-TW"),
   };
 }
 

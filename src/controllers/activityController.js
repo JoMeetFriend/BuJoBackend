@@ -43,15 +43,15 @@ export async function createActivity(req, res) {
   const normalizedTitle = typeof title === "string" ? title.trim() : "";
 
   if (!normalizedTitle) {
-    return res.status(400).json({ message: "活動名稱為必填" });
+    return res.status(400).json({ message: req.t("activity.titleRequired") });
   }
   if (normalizedTitle.length > ACTIVITY_TITLE_MAX_LENGTH) {
     return res
       .status(400)
-      .json({ message: `活動名稱最多 ${ACTIVITY_TITLE_MAX_LENGTH} 字` });
+      .json({ message: req.t("activity.titleTooLong", { max: ACTIVITY_TITLE_MAX_LENGTH }) });
   }
   if (!deadline) {
-    return res.status(400).json({ message: "流團時間為必填" });
+    return res.status(400).json({ message: req.t("activity.deadlineRequired") });
   }
 
   let candidateSlotsData;
@@ -80,7 +80,7 @@ export async function createActivity(req, res) {
     } else if (uniformTime?.startTime && uniformTime?.endTime) {
       candidateSlotsData = buildCandidateDateSlots(candidateDates, uniformTime);
     } else {
-      return res.status(400).json({ message: "請設定統一時間或選擇整日" });
+      return res.status(400).json({ message: req.t("activity.uniformTimeOrAllDayRequired") });
     }
     // 情境三候選日期不連續，投票理應開放到「最晚」候選日才截止，不能像情境二一樣只看
     // 單一固定日期——用最早候選日當投票截止基準，會讓比較晚的候選日還沒到就被迫腰斬投票
@@ -90,11 +90,11 @@ export async function createActivity(req, res) {
     scheduleExtra = { availability_mode: "slot", deadline_at: latestSlotStart };
   } else if (isVotingD) {
     if (!dateSlots.every((s) => s.date && s.startTime && s.endTime)) {
-      return res.status(400).json({ message: "每個候選日期都需要設定時段" });
+      return res.status(400).json({ message: req.t("activity.eachCandidateDateNeedsSlot") });
     }
     // 每個候選日期只能對應一組時段，同一天出現兩筆會讓子區間交集運算跟參與者端的窗口選取產生歧義
     if (new Set(dateSlots.map((s) => s.date)).size !== dateSlots.length) {
-      return res.status(400).json({ message: "每個候選日期只能設定一組時段" });
+      return res.status(400).json({ message: req.t("activity.oneSlotPerCandidateDate") });
     }
     candidateSlotsData = buildDateSlots(dateSlots);
     // 情境四候選時段跨多個不連續日期，跟情境三同理，投票理應開放到「最晚」候選時段才截止
@@ -104,7 +104,14 @@ export async function createActivity(req, res) {
     scheduleExtra = { availability_mode: "slot", deadline_at: latestSlotStart };
   } else {
     if (!startDate) {
-      return res.status(400).json({ message: "開始日期為必填" });
+      return res.status(400).json({ message: req.t("activity.startDateRequired") });
+    }
+    // 情境一是單一固定日期，只有時間有範圍——endDate 缺省時 buildFixedSlot() 會 fallback 成
+    // startDate，這裡只需要擋「明確帶了跟 startDate 不同的 endDate」，避免繞過前端直接打
+    // API 建出橫跨多天的候選時段（前端已經拿掉了讓 endDate 獨立於 startDate 的介面，這裡是
+    // 公開 API 的第二層防禦，比照第 132-133 行「不能只靠前端擋」的既定原則）
+    if (endDate && endDate !== startDate) {
+      return res.status(400).json({ message: req.t("activity.endDateMustMatchStartDate") });
     }
     const { slotStart, slotEnd } = buildFixedSlot(
       startDate,
@@ -131,33 +138,33 @@ export async function createActivity(req, res) {
     ...candidateSlotsData.flatMap((s) => [s.slot_start, s.slot_end]),
   ];
   if (datesToValidate.some((d) => d != null && Number.isNaN(d.getTime()))) {
-    return res.status(400).json({ message: "日期或時間格式不正確" });
+    return res.status(400).json({ message: req.t("activity.invalidDateFormat") });
   }
 
   // 前端有擋結束時間必須晚於開始時間，但這是公開 API，不能只靠前端擋——這裡重新驗證一次，
   // 避免繞過前端直接打 API 建出 slot_end <= slot_start 的候選時段（見情境二 join 603 行同樣原則）
   if (candidateSlotsData.some((s) => s.slot_end <= s.slot_start)) {
-    return res.status(400).json({ message: "結束時間必須晚於開始時間" });
+    return res.status(400).json({ message: req.t("activity.endMustBeAfterStart") });
   }
   if (
     scheduleExtra.time_window_start &&
     scheduleExtra.time_window_end &&
     scheduleExtra.time_window_end <= scheduleExtra.time_window_start
   ) {
-    return res.status(400).json({ message: "結束時間必須晚於開始時間" });
+    return res.status(400).json({ message: req.t("activity.endMustBeAfterStart") });
   }
 
   if (scheduleExtra.deadline_at <= new Date()) {
     return res
       .status(400)
-      .json({ message: "活動時間已經過去，請調整活動時間" });
+      .json({ message: req.t("activity.timeAlreadyPast") });
   }
   // 「無報名緩衝」的極端 fallback（活動快開始、連最小預設都不安全）刻意讓 vote_deadline_at
   // 等於 deadline_at，這是合法狀態，不能用 >= 擋掉，只有「晚於」天花板才是真的不合理
   if (voteDeadlineAt > scheduleExtra.deadline_at) {
     return res
       .status(400)
-      .json({ message: "報名截止時間不能晚於活動的決策截止時間" });
+      .json({ message: req.t("activity.voteDeadlineAfterDecisionDeadline") });
   }
 
   try {
@@ -200,7 +207,7 @@ export async function createActivity(req, res) {
     return res.status(201).json({ activity: { id: activity.id } });
   } catch (error) {
     console.error("createActivity 錯誤：", error);
-    return res.status(500).json({ message: "伺服器錯誤" });
+    return res.status(500).json({ message: req.t("common.serverError") });
   }
 }
 
@@ -270,7 +277,7 @@ export async function listActivities(req, res) {
     });
   } catch (error) {
     console.error("listActivities 錯誤：", error);
-    return res.status(500).json({ message: "伺服器錯誤" });
+    return res.status(500).json({ message: req.t("common.serverError") });
   }
 }
 
@@ -299,7 +306,7 @@ export async function getActivity(req, res) {
     });
 
     if (!activity) {
-      return res.status(404).json({ message: "活動不存在" });
+      return res.status(404).json({ message: req.t("activity.notFound") });
     }
 
     // Lazy 狀態轉換（不用 cron，每次 GET 時觸發）
@@ -632,7 +639,7 @@ export async function getActivity(req, res) {
     });
   } catch (error) {
     console.error("getActivity 錯誤：", error);
-    return res.status(500).json({ message: "伺服器錯誤" });
+    return res.status(500).json({ message: req.t("common.serverError") });
   }
 }
 
@@ -658,9 +665,9 @@ export async function joinActivity(req, res) {
         },
       });
 
-      if (!activity) return { status: 404, message: "活動不存在" };
+      if (!activity) return { status: 404, message: req.t("activity.notFound") };
       if (activity.creator_id === userId)
-        return { status: 400, message: "不能報名自己建立的活動" };
+        return { status: 400, message: req.t("activity.cannotJoinOwnActivity") };
 
       // 四個情境皆適用：即使還沒有人打開詳情頁觸發 lazy check 轉換狀態，報名截止一律拒絕報名——
       // 判斷依據是 vote_deadline_at（報名截止），不是 deadline_at（決策硬截止天花板，語意不同）
@@ -668,7 +675,7 @@ export async function joinActivity(req, res) {
         activity.schedule &&
         activity.schedule.vote_deadline_at < new Date()
       ) {
-        return { status: 400, message: "此活動已截止報名" };
+        return { status: 400, message: req.t("activity.registrationClosed") };
       }
 
       const existing = await tx.activityParticipant.findUnique({
@@ -693,10 +700,10 @@ export async function joinActivity(req, res) {
       const isResubmission = isRangeResubmission || isFindDateResubmission;
 
       if (!isResubmission && activity.status !== "recruiting") {
-        return { status: 400, message: "此活動不在揪團中" };
+        return { status: 400, message: req.t("activity.notRecruiting") };
       }
       if (isResubmission && activity.status !== "recruiting") {
-        return { status: 400, message: "此活動不在揪團中" };
+        return { status: 400, message: req.t("activity.notRecruiting") };
       }
 
       let availabilityData = [];
@@ -704,7 +711,7 @@ export async function joinActivity(req, res) {
       if (isRangeMode) {
         const list = Array.isArray(ranges) ? ranges : [];
         if (list.length === 0) {
-          return { status: 400, message: "請提供至少一段可用時間" };
+          return { status: 400, message: req.t("activity.provideAtLeastOneAvailability") };
         }
         const windowStart = activity.schedule.time_window_start;
         const windowEnd = activity.schedule.time_window_end;
@@ -717,7 +724,7 @@ export async function joinActivity(req, res) {
           ) {
             return {
               status: 400,
-              message: "提交的可用時間超出建立者設定的時間範圍",
+              message: req.t("activity.availabilityOutOfRange"),
             };
           }
         }
@@ -732,13 +739,13 @@ export async function joinActivity(req, res) {
           ? [...new Set(candidateSlotIds)]
           : [];
         if (ids.length === 0) {
-          return { status: 400, message: "請選擇至少一個候選時段" };
+          return { status: 400, message: req.t("activity.selectAtLeastOneSlot") };
         }
         const slotsById = new Map(
           activity.candidateSlots.map((s) => [s.id, s]),
         );
         if (!ids.every((sid) => slotsById.has(sid))) {
-          return { status: 400, message: "候選時段不存在" };
+          return { status: 400, message: req.t("activity.slotNotFound") };
         }
 
         // 情境四：參與者可以額外附上在候選時段窗口內自選的子區間，僅供建立者決策參考顯示，
@@ -750,12 +757,12 @@ export async function joinActivity(req, res) {
         for (const r of rangeList) {
           const slot = slotsById.get(r.candidateSlotId);
           if (!slot) {
-            return { status: 400, message: "候選時段不存在" };
+            return { status: 400, message: req.t("activity.slotNotFound") };
           }
           const rangeStart = new Date(r.rangeStart);
           const rangeEnd = new Date(r.rangeEnd);
           if (rangeStart < slot.slot_start || rangeEnd > slot.slot_end) {
-            return { status: 400, message: "提交的子區間超出候選時段範圍" };
+            return { status: 400, message: req.t("activity.subRangeOutOfSlot") };
           }
           rangeBySlotId.set(r.candidateSlotId, { rangeStart, rangeEnd });
         }
@@ -777,10 +784,10 @@ export async function joinActivity(req, res) {
           activity.participant_target &&
           currentCount >= activity.participant_target
         ) {
-          return { status: 400, message: "活動人數已滿" };
+          return { status: 400, message: req.t("activity.full") };
         }
         if (existing?.status === "joined")
-          return { status: 400, message: "你已報名此活動" };
+          return { status: 400, message: req.t("activity.alreadyJoined") };
       }
 
       const newCount = isResubmission ? currentCount : currentCount + 1;
@@ -851,15 +858,15 @@ export async function joinActivity(req, res) {
 
     syncOnActivityJoined(id, userId);
 
-    return res.json({ message: "報名成功" });
+    return res.json({ message: req.t("activity.joinSuccess") });
   } catch (error) {
     console.error("joinActivity 錯誤：", error);
-    return res.status(500).json({ message: "伺服器錯誤" });
+    return res.status(500).json({ message: req.t("common.serverError") });
   }
 }
 
 export async function getRankedSlots(req, res) {
-  return res.status(400).json({ message: "此功能尚未支援" });
+  return res.status(400).json({ message: req.t("activity.notSupported") });
 }
 
 export async function confirmFormation(req, res) {
@@ -878,9 +885,9 @@ export async function confirmFormation(req, res) {
       },
     });
 
-    if (!activity) return res.status(404).json({ message: "活動不存在" });
+    if (!activity) return res.status(404).json({ message: req.t("activity.notFound") });
     if (activity.creator_id !== userId)
-      return res.status(403).json({ message: "只有創建者可以確認成團" });
+      return res.status(403).json({ message: req.t("activity.onlyCreatorCanConfirm") });
 
     const requiresVoting = !!activity.schedule?.requires_voting;
     const isRangeMode = activity.schedule?.availability_mode === "range";
@@ -893,10 +900,10 @@ export async function confirmFormation(req, res) {
 
     if (isRangeMode) {
       if (activity.status !== "recruiting" && activity.status !== "voting") {
-        return res.status(400).json({ message: "此活動狀態不允許確認成團" });
+        return res.status(400).json({ message: req.t("activity.formationNotAllowedInState") });
       }
       if (!slotStart || !slotEnd)
-        return res.status(400).json({ message: "請選擇要確認的時段" });
+        return res.status(400).json({ message: req.t("activity.selectSlotToConfirm") });
 
       const sched = activity.schedule;
       const windowStart = sched.time_window_start ?? sched.fixed_date;
@@ -921,7 +928,7 @@ export async function confirmFormation(req, res) {
       if (!matched)
         return res
           .status(400)
-          .json({ message: "此候選時段不在可確認的名單中" });
+          .json({ message: req.t("activity.slotNotConfirmable") });
 
       newCandidateSlotData = {
         slot_start: start,
@@ -930,25 +937,25 @@ export async function confirmFormation(req, res) {
       };
     } else if (!requiresVoting) {
       if (activity.status !== "recruiting" && activity.status !== "voting") {
-        return res.status(400).json({ message: "此活動狀態不允許確認成團" });
+        return res.status(400).json({ message: req.t("activity.formationNotAllowedInState") });
       }
       winningSlot = activity.candidateSlots[0];
     } else if (scheduleVariant === "find_date_time") {
       // 情境四：建立者從交集運算算出的窄窗口裡挑一段，不是直接採用候選時段的原始邊界
       if (activity.status !== "recruiting" && activity.status !== "voting") {
-        return res.status(400).json({ message: "此活動狀態不允許確認成團" });
+        return res.status(400).json({ message: req.t("activity.formationNotAllowedInState") });
       }
       if (!candidateSlotId)
-        return res.status(400).json({ message: "請選擇要確認的候選時段" });
+        return res.status(400).json({ message: req.t("activity.selectCandidateSlotToConfirm") });
       const slot = activity.candidateSlots.find(
         (s) => s.id === candidateSlotId,
       );
       if (!slot)
         return res
           .status(400)
-          .json({ message: "此候選時段不在可確認的名單中" });
+          .json({ message: req.t("activity.slotNotConfirmable") });
       if (!slotStart || !slotEnd)
-        return res.status(400).json({ message: "請選擇要確認的時段" });
+        return res.status(400).json({ message: req.t("activity.selectSlotToConfirm") });
 
       const candidates = computeSlotOverlapRanking({
         ...slot,
@@ -967,7 +974,7 @@ export async function confirmFormation(req, res) {
       if (!matched)
         return res
           .status(400)
-          .json({ message: "此候選時段不在可確認的名單中" });
+          .json({ message: req.t("activity.slotNotConfirmable") });
 
       newCandidateSlotData = {
         slot_start: start,
@@ -977,10 +984,10 @@ export async function confirmFormation(req, res) {
     } else {
       // 情境三：建立者可以自由選任何一個真實存在的候選時段，不限並列最高票
       if (activity.status !== "recruiting" && activity.status !== "voting") {
-        return res.status(400).json({ message: "此活動狀態不允許確認成團" });
+        return res.status(400).json({ message: req.t("activity.formationNotAllowedInState") });
       }
       if (!candidateSlotId)
-        return res.status(400).json({ message: "請選擇要確認的候選時段" });
+        return res.status(400).json({ message: req.t("activity.selectCandidateSlotToConfirm") });
 
       winningSlot = activity.candidateSlots.find(
         (s) => s.id === candidateSlotId,
@@ -988,14 +995,14 @@ export async function confirmFormation(req, res) {
       if (!winningSlot)
         return res
           .status(400)
-          .json({ message: "此候選時段不在可確認的名單中" });
+          .json({ message: req.t("activity.slotNotConfirmable") });
     }
 
     // 四情境皆適用：拒絕確認一個開始時間已經過去的候選時段/時段（range 模式與情境四是臨時算出的窄窗口）
     const confirmingStart =
       newCandidateSlotData?.slot_start ?? winningSlot?.slot_start;
     if (confirmingStart && confirmingStart <= new Date()) {
-      return res.status(400).json({ message: "此時段已經過去，請重新選擇" });
+      return res.status(400).json({ message: req.t("activity.slotAlreadyPast") });
     }
 
     const notifyTargets = activity.participants.filter(
@@ -1043,7 +1050,7 @@ export async function confirmFormation(req, res) {
     if (!won) {
       return res
         .status(409)
-        .json({ message: "此活動狀態已被異動，請重新整理後再試" });
+        .json({ message: req.t("activity.stateChangedConcurrently") });
     }
 
     await sendActivityLifecycleLineNotifications({
@@ -1052,10 +1059,10 @@ export async function confirmFormation(req, res) {
       type: NOTIFICATION_TYPES.ACTIVITY_CONFIRMED,
     });
 
-    return res.json({ message: "成團成功" });
+    return res.json({ message: req.t("activity.confirmSuccess") });
   } catch (error) {
     console.error("confirmFormation 錯誤：", error);
-    return res.status(500).json({ message: "伺服器錯誤" });
+    return res.status(500).json({ message: req.t("common.serverError") });
   }
 }
 
@@ -1071,11 +1078,11 @@ export async function cancelActivity(req, res) {
       },
     });
 
-    if (!activity) return res.status(404).json({ message: "活動不存在" });
+    if (!activity) return res.status(404).json({ message: req.t("activity.notFound") });
     if (activity.creator_id !== userId)
-      return res.status(403).json({ message: "只有創建者可以取消活動" });
+      return res.status(403).json({ message: req.t("activity.onlyCreatorCanCancel") });
     if (activity.status === "cancelled" || activity.status === "confirmed") {
-      return res.status(400).json({ message: "此活動無法取消" });
+      return res.status(400).json({ message: req.t("activity.cannotCancel") });
     }
 
     const notifyTargets = activity.participants.filter(
@@ -1106,7 +1113,7 @@ export async function cancelActivity(req, res) {
     if (!won) {
       return res
         .status(409)
-        .json({ message: "此活動狀態已被異動，請重新整理後再試" });
+        .json({ message: req.t("activity.stateChangedConcurrently") });
     }
 
     await sendActivityLifecycleLineNotifications({
@@ -1115,12 +1122,13 @@ export async function cancelActivity(req, res) {
       type: NOTIFICATION_TYPES.ACTIVITY_CANCELLED,
     });
 
+
     activity.participants.forEach((p) => syncOnActivityLeft(id, p.user_id));
 
-    return res.json({ message: "活動已取消" });
+    return res.json({ message: req.t("activity.cancelled") });
   } catch (error) {
     console.error("cancelActivity 錯誤：", error);
-    return res.status(500).json({ message: "伺服器錯誤" });
+    return res.status(500).json({ message: req.t("common.serverError") });
   }
 }
 
@@ -1133,9 +1141,9 @@ export async function cancelJoin(req, res) {
       where: { id },
     });
 
-    if (!activity) return res.status(404).json({ message: "活動不存在" });
+    if (!activity) return res.status(404).json({ message: req.t("activity.notFound") });
     if (activity.status !== "recruiting") {
-      return res.status(400).json({ message: "此活動狀態不允許取消報名" });
+      return res.status(400).json({ message: req.t("activity.cannotCancelJoinInState") });
     }
 
     const participant = await prisma.activityParticipant.findUnique({
@@ -1143,7 +1151,7 @@ export async function cancelJoin(req, res) {
     });
 
     if (!participant || participant.status !== "joined") {
-      return res.status(400).json({ message: "你尚未報名此活動" });
+      return res.status(400).json({ message: req.t("activity.notJoined") });
     }
 
     await prisma.$transaction([
@@ -1159,12 +1167,13 @@ export async function cancelJoin(req, res) {
       }),
     ]);
 
+
     syncOnActivityLeft(id, userId);
 
-    return res.json({ message: "已取消報名" });
+    return res.json({ message: req.t("activity.joinCancelled") });
   } catch (error) {
     console.error("cancelJoin 錯誤：", error);
-    return res.status(500).json({ message: "伺服器錯誤" });
+    return res.status(500).json({ message: req.t("common.serverError") });
   }
 }
 

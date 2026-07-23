@@ -11,11 +11,11 @@ export async function requestFriendship(req, res) {
   const { receiver_id: receiverId } = req.body;
 
   if (!receiverId) {
-    return res.status(400).json({ message: "缺少 receiver_id" });
+    return res.status(400).json({ message: req.t("friendship.missingReceiverId") });
   }
 
   if (requesterId === receiverId) {
-    return res.status(400).json({ message: "不能加自己為好友" });
+    return res.status(400).json({ message: req.t("friendship.cannotAddSelf") });
   }
 
   try {
@@ -25,7 +25,7 @@ export async function requestFriendship(req, res) {
     });
 
     if (!receiver) {
-      return res.status(404).json({ message: "找不到使用者" });
+      return res.status(404).json({ message: req.t("friendship.userNotFound") });
     }
 
     const existingFriendship = await prisma.friendship.findFirst({
@@ -38,14 +38,14 @@ export async function requestFriendship(req, res) {
     });
 
     if (existingFriendship?.status === "accepted") {
-      return res.status(409).json({ message: "已經是好友" });
+      return res.status(409).json({ message: req.t("friendship.alreadyFriends") });
     }
 
     if (existingFriendship?.status === "pending") {
       const message =
         existingFriendship.requester_id === requesterId
-          ? "已送出好友邀請"
-          : "對方已邀請你";
+          ? req.t("friendship.requestAlreadySent")
+          : req.t("friendship.alreadyInvitedByOther");
       return res.status(409).json({ message });
     }
 
@@ -54,7 +54,7 @@ export async function requestFriendship(req, res) {
       existingFriendship.status !== "rejected" &&
       existingFriendship.status !== "deleted"
     ) {
-      return res.status(409).json({ message: "目前無法送出好友邀請" });
+      return res.status(409).json({ message: req.t("friendship.cannotSendRequest") });
     }
 
     const friendship = await prisma.$transaction(async (tx) => {
@@ -93,7 +93,7 @@ export async function requestFriendship(req, res) {
     });
 
     return res.status(201).json({
-      message: "好友邀請已送出",
+      message: req.t("friendship.requestSent"),
       friendship: {
         id: friendship.id,
         requester_id: friendship.requester_id,
@@ -103,7 +103,7 @@ export async function requestFriendship(req, res) {
     });
   } catch (error) {
     console.error("requestFriendship 錯誤：", error);
-    return res.status(500).json({ message: "伺服器錯誤" });
+    return res.status(500).json({ message: req.t("common.serverError") });
   }
 }
 
@@ -117,15 +117,15 @@ export async function acceptFriendship(req, res) {
     });
 
     if (!friendship) {
-      return res.status(404).json({ message: "找不到好友邀請" });
+      return res.status(404).json({ message: req.t("friendship.requestNotFound") });
     }
 
     if (friendship.receiver_id !== userId) {
-      return res.status(403).json({ message: "只有被邀請者可以接受好友邀請" });
+      return res.status(403).json({ message: req.t("friendship.onlyReceiverCanAccept") });
     }
 
     if (friendship.status !== "pending") {
-      return res.status(400).json({ message: "此好友邀請無法接受" });
+      return res.status(400).json({ message: req.t("friendship.cannotAccept") });
     }
 
     const updatedFriendship = await prisma.$transaction(async (tx) => {
@@ -152,7 +152,7 @@ export async function acceptFriendship(req, res) {
     });
 
     return res.status(200).json({
-      message: "已接受好友邀請",
+      message: req.t("friendship.accepted"),
       friendship: {
         id: updatedFriendship.id,
         requester_id: updatedFriendship.requester_id,
@@ -162,7 +162,7 @@ export async function acceptFriendship(req, res) {
     });
   } catch (error) {
     console.error("acceptFriendship 錯誤：", error);
-    return res.status(500).json({ message: "伺服器錯誤" });
+    return res.status(500).json({ message: req.t("common.serverError") });
   }
 }
 
@@ -176,15 +176,15 @@ export async function rejectFriendship(req, res) {
     });
 
     if (!friendship) {
-      return res.status(404).json({ message: "找不到好友邀請" });
+      return res.status(404).json({ message: req.t("friendship.requestNotFound") });
     }
 
     if (friendship.receiver_id !== userId) {
-      return res.status(403).json({ message: "只有被邀請者可以拒絕好友邀請" });
+      return res.status(403).json({ message: req.t("friendship.onlyReceiverCanReject") });
     }
 
     if (friendship.status !== "pending") {
-      return res.status(400).json({ message: "此好友邀請無法拒絕" });
+      return res.status(400).json({ message: req.t("friendship.cannotReject") });
     }
 
     const updatedFriendship = await prisma.friendship.update({
@@ -193,7 +193,7 @@ export async function rejectFriendship(req, res) {
     });
 
     return res.status(200).json({
-      message: "已拒絕好友邀請",
+      message: req.t("friendship.rejected"),
       friendship: {
         id: updatedFriendship.id,
         requester_id: updatedFriendship.requester_id,
@@ -203,7 +203,7 @@ export async function rejectFriendship(req, res) {
     });
   } catch (error) {
     console.error("rejectFriendship 錯誤：", error);
-    return res.status(500).json({ message: "伺服器錯誤" });
+    return res.status(500).json({ message: req.t("common.serverError") });
   }
 }
 
@@ -217,18 +217,18 @@ export async function removeFriendship(req, res) {
     });
 
     if (!friendship) {
-      return res.status(404).json({ message: "找不到該好友關係" });
+      return res.status(404).json({ message: req.t("friendship.friendshipNotFound") });
     }
 
     if (
       friendship.requester_id !== userId &&
       friendship.receiver_id !== userId
     ) {
-      return res.status(403).json({ message: "無權操作此好友關係" });
+      return res.status(403).json({ message: req.t("friendship.forbidden") });
     }
 
     if (friendship.status !== "accepted") {
-      return res.status(400).json({ message: "此狀態無法刪除好友" });
+      return res.status(400).json({ message: req.t("friendship.cannotRemove") });
     }
 
     const updatedFriendship = await prisma.friendship.update({
@@ -237,7 +237,7 @@ export async function removeFriendship(req, res) {
     });
 
     return res.status(200).json({
-      message: "已刪除好友",
+      message: req.t("friendship.removed"),
       friendship: {
         id: updatedFriendship.id,
         status: updatedFriendship.status,
@@ -245,6 +245,6 @@ export async function removeFriendship(req, res) {
     });
   } catch (error) {
     console.error("removeFriendship 錯誤：", error);
-    return res.status(500).json({ message: "伺服器錯誤" });
+    return res.status(500).json({ message: req.t("common.serverError") });
   }
 }

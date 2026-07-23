@@ -45,6 +45,7 @@ jest.unstable_mockModule("../services/socketRoomService.js", () => ({
 const { createActivity, joinActivity, cancelJoin } =
   await import("../controllers/activityController.js");
 const { default: prisma } = await import("../lib/prisma.js");
+const { default: i18next } = await import("../lib/i18n.js");
 
 const CREATOR_ID = "user-creator";
 const PARTICIPANT_ID = "user-participant";
@@ -55,7 +56,7 @@ function makeReq({
   body = {},
   userId = CREATOR_ID,
 } = {}) {
-  return { params, body, user: { userId } };
+  return { params, body, user: { userId }, t: i18next.getFixedT("zh-TW") };
 }
 
 function makeRes() {

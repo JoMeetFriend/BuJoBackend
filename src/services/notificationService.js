@@ -1,5 +1,10 @@
 import prisma from "../lib/prisma.js";
 import { sendLinePushMessage } from "./lineMessagingService.js";
+import i18next from "../lib/i18n.js";
+
+// LINE 推播是背景送給接收者的，沒有請求上下文可判斷對方語言（User 也未儲存語言偏好），
+// 暫時固定用 zh-TW；站內通知則用讀取當下請求的 req.t，見 listUserNotifications。
+const fallbackT = i18next.getFixedT("zh-TW");
 
 export const NOTIFICATION_TYPES = {
   FRIEND_REQUEST_CREATED: "friend_request_created",
@@ -281,7 +286,7 @@ export async function sendActivityLifecycleLineNotifications(
   );
 }
 
-export async function listUserNotifications({ userId }, db = prisma) {
+export async function listUserNotifications({ userId, t }, db = prisma) {
   if (!userId) {
     throw new Error("userId is required");
   }
@@ -331,7 +336,7 @@ export async function listUserNotifications({ userId }, db = prisma) {
 
   return Promise.all(
     notifications.map((notification) =>
-      formatNotification(notification, db, friendshipsById),
+      formatNotification(notification, db, friendshipsById, t),
     ),
   );
 }
@@ -442,41 +447,45 @@ export async function countUnreadNotifications({ userId }, db = prisma) {
   });
 }
 
-async function formatNotification(notification, db, friendshipsById) {
+async function formatNotification(notification, db, friendshipsById, t = fallbackT) {
   if (notification.reference_type === NOTIFICATION_REFERENCE_TYPES.FRIENDSHIP) {
-    return formatFriendshipNotification(notification, friendshipsById);
+    return formatFriendshipNotification(notification, friendshipsById, t);
   }
 
   if (notification.reference_type === NOTIFICATION_REFERENCE_TYPES.ACTIVITY) {
-    return formatActivityNotification(notification, db);
+    return formatActivityNotification(notification, db, t);
   }
 
-  return buildNotificationResponse(notification, {
-    category: "general",
-    message: "你有一則新通知",
-    reference: {
-      type: notification.reference_type,
-      id: notification.reference_id,
-      status: null,
+  return buildNotificationResponse(
+    notification,
+    {
+      category: "general",
+      message: t("notification.generic"),
+      reference: {
+        type: notification.reference_type,
+        id: notification.reference_id,
+        status: null,
+      },
     },
-  });
+    t,
+  );
 }
 
-function formatFriendshipNotification(notification, friendshipsById) {
+function formatFriendshipNotification(notification, friendshipsById, t = fallbackT) {
   const friendship = notification.reference_id
     ? friendshipsById.get(notification.reference_id)
     : null;
 
-  const requesterName = friendship?.requester?.display_name || "有人";
-  const receiverName = friendship?.receiver?.display_name || "對方";
+  const requesterName = friendship?.requester?.display_name || t("notification.someone");
+  const receiverName = friendship?.receiver?.display_name || t("notification.theOtherPerson");
   const isPendingRequest =
     notification.type === NOTIFICATION_TYPES.FRIEND_REQUEST_CREATED &&
     friendship?.status === "pending";
 
   const message =
     notification.type === NOTIFICATION_TYPES.FRIEND_REQUEST_ACCEPTED
-      ? `${receiverName} 接受了你的好友邀請`
-      : `${requesterName} 向你發送好友邀請`;
+      ? t("notification.friendRequestAccepted", { name: receiverName })
+      : t("notification.friendRequestCreated", { name: requesterName });
   let actorUser = null;
 
   if (notification.type === NOTIFICATION_TYPES.FRIEND_REQUEST_CREATED) {
@@ -495,17 +504,21 @@ function formatFriendshipNotification(notification, friendshipsById) {
       }
     : null;
 
-  return buildNotificationResponse(notification, {
-    category: "friend",
-    message,
-    actor,
-    reference: {
-      type: NOTIFICATION_REFERENCE_TYPES.FRIENDSHIP,
-      id: notification.reference_id,
-      status: friendship?.status || null,
+  return buildNotificationResponse(
+    notification,
+    {
+      category: "friend",
+      message,
+      actor,
+      reference: {
+        type: NOTIFICATION_REFERENCE_TYPES.FRIENDSHIP,
+        id: notification.reference_id,
+        status: friendship?.status || null,
+      },
+      actions: isPendingRequest ? ["accept", "reject"] : [],
     },
-    actions: isPendingRequest ? ["accept", "reject"] : [],
-  });
+    t,
+  );
 }
 
 async function buildFriendshipLineMessage({ friendshipId, type }, db) {
@@ -523,15 +536,15 @@ async function buildFriendshipLineMessage({ friendshipId, type }, db) {
       })
     : null;
 
-  const requesterName = friendship?.requester?.display_name || "有人";
-  const receiverName = friendship?.receiver?.display_name || "對方";
+  const requesterName = friendship?.requester?.display_name || fallbackT("notification.someone");
+  const receiverName = friendship?.receiver?.display_name || fallbackT("notification.theOtherPerson");
 
   return type === NOTIFICATION_TYPES.FRIEND_REQUEST_ACCEPTED
-    ? `${receiverName} 接受了你的好友邀請`
-    : `${requesterName} 邀請你成為好友，快去 BuJo 看看吧！`;
+    ? fallbackT("notification.friendRequestAccepted", { name: receiverName })
+    : fallbackT("lineMessage.friendRequestCreated", { name: requesterName });
 }
 
-async function formatActivityNotification(notification, db) {
+async function formatActivityNotification(notification, db, t = fallbackT) {
   const activity = notification.reference_id
     ? await db.activity.findUnique({
         where: { id: notification.reference_id },
@@ -543,8 +556,8 @@ async function formatActivityNotification(notification, db) {
       })
     : null;
 
-  const creatorName = activity?.creator?.display_name || "有人";
-  const activityTitle = activity?.title || "新活動";
+  const creatorName = activity?.creator?.display_name || t("notification.someone");
+  const activityTitle = activity?.title || t("notification.newActivity");
   const actor =
     notification.type === NOTIFICATION_TYPES.ACTIVITY_CREATED && activity?.creator
       ? {
@@ -554,31 +567,35 @@ async function formatActivityNotification(notification, db) {
         }
       : null;
 
-  return buildNotificationResponse(notification, {
-    category: "activity",
-    message: buildActivityMessage(notification.type, { creatorName, activityTitle }),
-    actor,
-    reference: {
-      type: NOTIFICATION_REFERENCE_TYPES.ACTIVITY,
-      id: notification.reference_id,
-      status: activity?.status || null,
+  return buildNotificationResponse(
+    notification,
+    {
+      category: "activity",
+      message: buildActivityMessage(notification.type, { creatorName, activityTitle }, t),
+      actor,
+      reference: {
+        type: NOTIFICATION_REFERENCE_TYPES.ACTIVITY,
+        id: notification.reference_id,
+        status: activity?.status || null,
+      },
     },
-  });
+    t,
+  );
 }
 
-function buildActivityMessage(type, { creatorName, activityTitle }) {
+function buildActivityMessage(type, { creatorName, activityTitle }, t = fallbackT) {
   switch (type) {
     case NOTIFICATION_TYPES.ACTIVITY_CONFIRMED:
-      return `「${activityTitle}」已確認成團`;
+      return t("notification.activityConfirmed", { activityTitle });
     case NOTIFICATION_TYPES.ACTIVITY_CANCELLED:
-      return `「${activityTitle}」已取消`;
+      return t("notification.activityCancelled", { activityTitle });
     case NOTIFICATION_TYPES.TIME_TO_PICK:
-      return `「${activityTitle}」候選時段票數不相上下，請選擇最終時段`;
+      return t("notification.timeToPick", { activityTitle });
     case NOTIFICATION_TYPES.FORMATION_READY:
-      return `「${activityTitle}」人數已滿，請確認成團`;
+      return t("notification.formationReady", { activityTitle });
     case NOTIFICATION_TYPES.ACTIVITY_CREATED:
     default:
-      return `${creatorName} 建立了新活動：${activityTitle}`;
+      return t("notification.activityCreated", { creatorName, activityTitle });
   }
 }
 
@@ -594,10 +611,10 @@ export async function buildActivityLineMessage({ activityId, type }, db = prisma
       })
     : null;
 
-  const creatorName = activity?.creator?.display_name || "有人";
-  const activityTitle = activity?.title || "新活動";
+  const creatorName = activity?.creator?.display_name || fallbackT("notification.someone");
+  const activityTitle = activity?.title || fallbackT("notification.newActivity");
 
-  return buildActivityMessage(type, { creatorName, activityTitle });
+  return buildActivityMessage(type, { creatorName, activityTitle }, fallbackT);
 }
 
 async function deliverLineNotification({ userId, type, getText }, db) {
@@ -661,13 +678,14 @@ async function isLineNotificationEnabled({ userId, type }, db) {
 function buildNotificationResponse(
   notification,
   { category, message, reference, actions = [], actor = null },
+  t = fallbackT,
 ) {
   return {
     id: notification.id,
     type: notification.type,
     category,
     message,
-    timeText: formatTimeText(notification.created_at),
+    timeText: formatTimeText(notification.created_at, t),
     isRead: notification.is_read,
     createdAt: notification.created_at.toISOString(),
     actor,
@@ -676,26 +694,26 @@ function buildNotificationResponse(
   };
 }
 
-function formatTimeText(createdAt) {
+function formatTimeText(createdAt, t = fallbackT) {
   const diffMs = Date.now() - createdAt.getTime();
   const diffMinutes = Math.max(0, Math.floor(diffMs / 60000));
 
   if (diffMinutes < 1) {
-    return "剛剛";
+    return t("notification.timeJustNow");
   }
 
   if (diffMinutes < 60) {
-    return `${diffMinutes} 分鐘前`;
+    return t("notification.timeMinutesAgo", { count: diffMinutes });
   }
 
   const diffHours = Math.floor(diffMinutes / 60);
   if (diffHours < 24) {
-    return `${diffHours} 小時前`;
+    return t("notification.timeHoursAgo", { count: diffHours });
   }
 
   const diffDays = Math.floor(diffHours / 24);
   if (diffDays < 7) {
-    return `${diffDays} 天前`;
+    return t("notification.timeDaysAgo", { count: diffDays });
   }
 
   const year = createdAt.getFullYear();
