@@ -57,7 +57,9 @@
     "cancelled": "The activity has been cancelled",
     "cannotCancelJoinInState": "This activity's status does not allow cancelling registration",
     "notJoined": "You have not joined this activity",
-    "joinCancelled": "Registration cancelled"
+    "joinCancelled": "Registration cancelled",
+    "allDay": "All day",
+    "votingInProgress": "Voting in progress"
   },
   "friendship": {
     "missingReceiverId": "Missing receiver_id",
@@ -122,9 +124,20 @@
     "avatarUploadFailed": "Avatar upload failed",
     "avatarInvalidType": "Avatar only supports JPG, PNG, or WebP images"
   },
+  "socket": {
+    "notLoggedIn": "Not logged in",
+    "authFailed": "Authentication failed"
+  },
+  "chat": {
+    "contentRequired": "Content is required",
+    "contentLengthInvalid": "Content must be between 1-2000 characters",
+    "notParticipant": "You are not a participant of this activity",
+    "noChatRoom": "This activity does not have a chat room"
+  },
   "rateLimiter": {
     "loginTooMany": "Too many login attempts, please try again in 15 minutes",
     "signupTooMany": "Too many signup attempts, please try again in 1 hour",
-    "searchTooMany": "Too many searches, please try again later"
+    "searchTooMany": "Too many searches, please try again later",
+    "chatTooMany": "Too many messages, please try again later"
   }
 }

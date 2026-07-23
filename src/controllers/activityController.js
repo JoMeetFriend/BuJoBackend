@@ -273,7 +273,7 @@ export async function listActivities(req, res) {
     });
 
     return res.json({
-      activities: activities.map((act) => formatCard(act, userId)),
+      activities: activities.map((act) => formatCard(act, userId, req)),
     });
   } catch (error) {
     console.error("listActivities 錯誤：", error);
@@ -1382,7 +1382,7 @@ export function collectOverlappingCoParticipants(
   return [...seen.values()];
 }
 
-function formatCard(act, userId) {
+function formatCard(act, userId, { t } = { t: (s) => s }) {
   const sched = act.schedule;
   const confirmedSlot = sched?.confirmedSlot ?? null;
   const displaySlot =
@@ -1396,10 +1396,10 @@ function formatCard(act, userId) {
   if (displaySlot) {
     date = formatShortDate(displaySlot.slot_start);
     time = displaySlot.all_day
-      ? "整天"
+      ? t("activity.allDay")
       : `${formatHHMM(displaySlot.slot_start)} - ${formatHHMM(displaySlot.slot_end)}`;
   } else if (sched?.requires_voting) {
-    time = "投票中";
+    time = t("activity.votingInProgress");
   }
 
   return {

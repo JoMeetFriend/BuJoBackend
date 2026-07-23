@@ -1,6 +1,7 @@
 import { Server } from "socket.io";
 import jwt from "jsonwebtoken";
 import prisma from "../lib/prisma.js";
+import i18n from "../lib/i18n.js";
 
 const allowedOrigins = (process.env.ALLOWED_ORIGINS || "")
   .split(",")
@@ -37,10 +38,11 @@ export function initSocket(httpServer) {
   });
 
   io.use(async (socket, next) => {
+    const lng = socket.handshake.headers["accept-language"]?.split(",")[0]?.split("-")[0]?.toLowerCase() === "zh" ? "zh-TW" : "en";
     try {
       const cookies = parseCookies(socket.handshake.headers.cookie);
       const token = cookies.token;
-      if (!token) return next(new Error("未登入"));
+      if (!token) return next(new Error(i18n.t("socket.notLoggedIn", { lng })));
 
       const payload = jwt.verify(token, process.env.JWT_SECRET);
       const userId = payload.userId;
@@ -61,7 +63,7 @@ export function initSocket(httpServer) {
       socket.data.userId = userId;
       next();
     } catch (err) {
-      next(new Error("驗證失敗"));
+      next(new Error(i18n.t("socket.authFailed", { lng })));
     }
   });
 

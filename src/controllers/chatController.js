@@ -12,22 +12,22 @@ export async function createMessage(req, res) {
   const { content } = req.body;
 
   if (typeof content !== "string" || content.length === 0) {
-    return res.status(400).json({ message: "content 為必填" });
+    return res.status(400).json({ message: req.t("chat.contentRequired") });
   }
   if (content.length > 2000) {
     return res
       .status(400)
-      .json({ message: "content 長度需在 1-2000 字元之間" });
+      .json({ message: req.t("chat.contentLengthInvalid") });
   }
 
   const participant = await verifyParticipant(id, userId);
   if (!participant) {
-    return res.status(403).json({ message: "你不是此活動的參與者" });
+    return res.status(403).json({ message: req.t("chat.notParticipant") });
   }
 
   const chat = await getChatByActivityId(id);
   if (!chat) {
-    return res.status(404).json({ message: "此活動無聊天室" });
+    return res.status(404).json({ message: req.t("chat.noChatRoom") });
   }
 
   const message = await saveMessage(chat.id, userId, content);
@@ -58,12 +58,12 @@ export async function listMessages(req, res) {
 
   const participant = await verifyParticipant(id, userId);
   if (!participant) {
-    return res.status(403).json({ message: "你不是此活動的參與者" });
+    return res.status(403).json({ message: req.t("chat.notParticipant") });
   }
 
   const chat = await getChatByActivityId(id);
   if (!chat) {
-    return res.status(404).json({ message: "此活動無聊天室" });
+    return res.status(404).json({ message: req.t("chat.noChatRoom") });
   }
 
   const result = await getMessages(chat.id, { before, limit });
